@@ -382,70 +382,70 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
 };
 
 // Function to delete files from disk
-const deleteFiles = (files: { path: string }[]) => {
-  files.forEach(file => {
-    if (!file.path) {
-      console.warn(`Warning: Missing path for file`, file);  // Log for debugging
-      return;  // Skip this file if path is missing
-    }
+// const deleteFiles = (files: { path: string }[]) => {
+//   files.forEach(file => {
+//     if (!file.path) {
+//       console.warn(`Warning: Missing path for file`, file);  // Log for debugging
+//       return;  // Skip this file if path is missing
+//     }
     
-    const filePath = path.join(__dirname, '../../', file.path);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);  // Delete the file from disk
-      console.log(`Deleted file: ${filePath}`);  // Log file deletion for debugging
-    } else {
-      console.warn(`File does not exist: ${filePath}`);  // Log if file does not exist
-    }
-  });
-};
+//     const filePath = path.join(__dirname, '../../', file.path);
+//     if (fs.existsSync(filePath)) {
+//       fs.unlinkSync(filePath);  // Delete the file from disk
+//       console.log(`Deleted file: ${filePath}`);  // Log file deletion for debugging
+//     } else {
+//       console.warn(`File does not exist: ${filePath}`);  // Log if file does not exist
+//     }
+//   });
+// };
 
-export const deleteOrder = async (req: Request, res: Response): Promise<Response | any> => {
-  const { id } = req.params;
-  const user = req.user as User;
+// export const deleteOrder = async (req: Request, res: Response): Promise<Response | any> => {
+//   const { id } = req.params;
+//   const user = req.user as User;
 
-  try {
-    const order = await prisma.order.findUnique({ where: { id } });
+//   try {
+//     const order = await prisma.order.findUnique({ where: { id } });
 
-    if (!order) return res.status(404).json({ message: "Order not found" });
+//     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    if (user.role === "sales_person" && order.createdById !== user.id) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
+//     if (user.role === "sales_person" && order.createdById !== user.id) {
+//       return res.status(403).json({ message: "Forbidden" });
+//     }
 
-    if (user.role === "worker") {
-      return res.status(403).json({ message: "Forbidden" });
-    }
+//     if (user.role === "worker") {
+//       return res.status(403).json({ message: "Forbidden" });
+//     }
 
-    // Delete files associated with the order (if any)
-    if (order.productImages && Array.isArray(order.productImages)) {
-      // Ensure the path is defined and valid before attempting deletion
-      deleteFiles(order.productImages as { path: string }[]);
-    }
+//     // Delete files associated with the order (if any)
+//     if (order.productImages && Array.isArray(order.productImages)) {
+//       // Ensure the path is defined and valid before attempting deletion
+//       deleteFiles(order.productImages as { path: string }[]);
+//     }
 
-    if (order.photosWithComments) {
-      const photosWithComments = order.photosWithComments as PhotoWithComment[];
-      photosWithComments.forEach(item => {
-        if (item.photo) {
-          const photoPath = path.join(__dirname, '../../', item.photo);
-          if (fs.existsSync(photoPath)) {
-            fs.unlinkSync(photoPath);  // Delete each photo
-            console.log(`Deleted photo: ${photoPath}`);  // Log photo deletion for debugging
-          } else {
-            console.warn(`Photo does not exist: ${photoPath}`);  // Log if photo does not exist
-          }
-        }
-      });
-    }
+//     if (order.photosWithComments) {
+//       const photosWithComments = order.photosWithComments as PhotoWithComment[];
+//       photosWithComments.forEach(item => {
+//         if (item.photo) {
+//           const photoPath = path.join(__dirname, '../../', item.photo);
+//           if (fs.existsSync(photoPath)) {
+//             fs.unlinkSync(photoPath);  // Delete each photo
+//             console.log(`Deleted photo: ${photoPath}`);  // Log photo deletion for debugging
+//           } else {
+//             console.warn(`Photo does not exist: ${photoPath}`);  // Log if photo does not exist
+//           }
+//         }
+//       });
+//     }
 
-    // Delete the order from the database
-    await prisma.order.delete({ where: { id } });
+//     // Delete the order from the database
+//     await prisma.order.delete({ where: { id } });
 
-    return res.json({ message: 'Order deleted successfully' });
-  } catch (error) {
-    console.error('Order deletion error:', error);
-    return handleError(res, error);
-  }
-};
+//     return res.json({ message: 'Order deleted successfully' });
+//   } catch (error) {
+//     console.error('Order deletion error:', error);
+//     return handleError(res, error);
+//   }
+// };
 
 export const updateStatus = async (req: Request,res:Response): Promise<Response | any> =>{
   const { id } = req.params;
