@@ -29,7 +29,7 @@ async function someAsyncFunction() {
 
 // Public routes — no auth
 router.get("/order/:id", getSingleOrder); 
-// router.post("/register", register);
+
 router.post("/login", login);
 
 
