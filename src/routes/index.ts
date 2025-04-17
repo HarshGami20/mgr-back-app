@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 
 import { authMiddleware } from "../middleware/authMiddleware";
-import { createOrder, deleteOrder, getOrders, getSingleOrder, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
+import { createOrder,  getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
 import { getReports } from "../controllers/reportController";
 import { login, register, updatePassword } from "../controllers/authController";
 import { getAllUsers, updateUserRole } from "../controllers/userController";
@@ -65,7 +65,7 @@ router.get("/orders", getOrders);
 // router.put("/orders/id=:id", updateOrder);
 router.put("/orders/id=:id", orderUpload, updateOrder); 
 
-router.delete('/orders/:id', deleteOrder);
+// router.delete('/orders/:id', deleteOrder);
 router.get('/users', getAllUsers);
 router.put('/users/:id', updateUserRole);
 router.patch('/orders/:id/update-status',updateStatus);
