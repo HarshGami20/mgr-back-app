@@ -3,14 +3,30 @@ import express, { Request, Response } from "express";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { createOrder, deleteOrder, getOrders, getSingleOrder, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
 import { getReports } from "../controllers/reportController";
-import { handleError } from "../utils/errorHandler";
 import { login, register, updatePassword } from "../controllers/authController";
 import { getAllUsers, updateUserRole } from "../controllers/userController";
 import { requireSuperAdmin } from "../middleware/requireSuperAdmin";
+import { handleError } from "../utils/errorHandler";
 
 const router = express.Router();
 
-router.get('/example', async (req: Request, res: Response): Promise<Response | any> => {
+// router.get('/example', async (req: Request, res: Response): Promise<Response | any> => {
+//   try {
+//     const data = await someAsyncFunction();
+//     res.status(200).json({ message: "Success", data });
+//   } catch (error: unknown) {
+//     handleError(res, error);
+//   }
+// });
+// async function someAsyncFunction() {
+//   return { key: "value" };
+// }
+
+async function someAsyncFunction() {
+  return { key: "value" };
+}
+
+router.get('/example', async (req: Request, res: Response): Promise<void> => {
   try {
     const data = await someAsyncFunction();
     res.status(200).json({ message: "Success", data });
@@ -18,17 +34,12 @@ router.get('/example', async (req: Request, res: Response): Promise<Response | a
     handleError(res, error);
   }
 });
-async function someAsyncFunction() {
-  return { key: "value" };
-}
-
-
 
 
 
 
 // Public routes — no auth
-router.get("/order/:id", getSingleOrder); 
+// router.get("/order/:id", getSingleOrder); 
 
 router.post("/login", login);
 
@@ -38,7 +49,7 @@ router.post("/login", login);
 router.post("/register", authMiddleware, requireSuperAdmin, register);
 
 // Only authenticated super_admin can update passwords
-router.put("/update-password", authMiddleware, requireSuperAdmin, updatePassword);
+// router.put("/update-password", authMiddleware, requireSuperAdmin, updatePassword);
 
 
 
@@ -52,7 +63,7 @@ router.post('/orders', orderUpload, createOrder);
 // router.post("/orders", createOrder);
 router.get("/orders", getOrders);
 // router.put("/orders/id=:id", updateOrder);
-router.put("/orders/id=:id", orderUpload, updateOrder); // ✅ Multer middleware added
+router.put("/orders/id=:id", orderUpload, updateOrder); 
 
 router.delete('/orders/:id', deleteOrder);
 router.get('/users', getAllUsers);

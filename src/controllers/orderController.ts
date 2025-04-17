@@ -112,10 +112,10 @@ export const getOrders = async (req: Request, res: Response): Promise<Response |
     const orders = await prisma.order.findMany({
       include: { createdBy: true }
     });
-    return res.json(orders);
+     res.json(orders);
   } catch (error) {
     console.error(error);
-    return handleError(res, error);
+     handleError(res, error);
   }
 };
 

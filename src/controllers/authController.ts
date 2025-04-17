@@ -99,6 +99,7 @@ export const register = async (req: Request, res: Response): Promise<Response | 
   }
 };
 
+
 export const login = async (req: Request, res: Response): Promise<Response | any> => {
   const { email, password } = req.body;
 
@@ -124,7 +125,7 @@ export const login = async (req: Request, res: Response): Promise<Response | any
     console.error("Login Error:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
-};
+}; 
 
 export const updatePassword = async (req: Request, res: Response): Promise<Response> => {
   const user: User = req.user as User;
