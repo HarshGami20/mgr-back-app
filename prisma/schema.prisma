@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"  // Use MySQL instead of PostgreSQL
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String   @id @default(cuid())
+  email    String   @unique
+  name     String
+  password String
+  role     Role
+  orders   Order[]  @relation("CreatedOrders")
+}
+
+model Order {
+  id                 String   @id @default(cuid())
+  customerName       String
+  phoneNumber        String
+  totalAmount        Float
+  modeOfPayment      String
+  advanceAmount      Float
+  lendingAmount      Float
+  productImages      Json     // Changed from String[] to Json
+  description        String
+  orderStatus        String
+  paymentStatus      String
+  commentsFromStaff  String
+  photosWithComments Json
+  dateOfDelivery     DateTime
+  orderCategory      String
+  createdAt          DateTime @default(now())
+  createdBy          User     @relation("CreatedOrders", fields: [createdById], references: [id])
+  createdById        String
+}
+
+
+enum Role {
+  super_admin
+  admin
+  sales_person
+  worker
+}
