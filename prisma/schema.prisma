@@ -11,13 +11,14 @@ model User {
   id       String   @id @default(cuid())
   email    String   @unique
   name     String
+  phone    String   // <-- Added phone field here
   password String
   role     Role
   orders   Order[]  @relation("CreatedOrders")
 }
 
 model Order {
-  id                 String   @id @default(cuid())
+  id                 Int      @id @default(autoincrement())
   customerName       String
   phoneNumber        String
   totalAmount        Float
@@ -35,6 +36,7 @@ model Order {
   createdAt          DateTime @default(now())
   createdBy          User     @relation("CreatedOrders", fields: [createdById], references: [id])
   createdById        String
+  assignees          Json     // <<< add this line for assignee array
 }
 
 
