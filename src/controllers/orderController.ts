@@ -47,7 +47,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const productImageFiles = files['productImages'] || [];
     const photosWithCommentsFiles = files['photosWithCommentsFiles'] || [];
-    const user = getUserFromToken(req);
+    const user = getUserFromToken(req) as { id: string };
 
     // Get the uploaded product image paths
     const productImagePaths = productImageFiles.map(file => ({
@@ -285,31 +285,41 @@ const deleteFiles = (files: { path: string }[]) => {
   });
 };
 
-export const deleteOrder = async (req: Request, res: Response): Promise<Response | void> => {
+export const deleteOrder = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const parsedId = parseInt(id, 10); 
   const user = req.user as User;
 
   try {
-    const order = await prisma.order.findUnique({ where: { id : parsedId  } });
+    const order = await prisma.order.findUnique({ where: { id: parsedId } });
 
-    if (!order) return res.status(404).json({ message: "Order not found" });
+    if (!order) {
+      res.status(404).json({ message: "Order not found" });
+      return;
+    }
 
     if (user.role === "sales_person" && order.createdById !== user.id) {
-      return res.status(403).json({ message: "Forbidden" });
+      res.status(403).json({ message: "Forbidden" });
+      return;
     }
 
     if (user.role === "worker") {
-      return res.status(403).json({ message: "Forbidden" });
+      res.status(403).json({ message: "Forbidden" });
+      return;
     }
 
-    // Delete files associated with the order (if any)
     if (order.productImages && Array.isArray(order.productImages)) {
       deleteFiles(order.productImages as { path: string }[]);
     }
 
     if (order.photosWithComments && Array.isArray(order.photosWithComments)) {
-      const photosWithComments = order.photosWithComments as PhotoWithComment[];
+      const photosWithComments = order.photosWithComments.map((item: any) => {
+        if (typeof item.photo === "string" && typeof item.comment === "string") {
+          return { photo: item.photo, comment: item.comment };
+        }
+        throw new Error("Invalid photoWithComments data");
+      });
+
       photosWithComments.forEach(item => {
         if (item.photo) {
           const photoPath = resolvePath(item.photo);
@@ -323,12 +333,12 @@ export const deleteOrder = async (req: Request, res: Response): Promise<Response
       });
     }
 
-    await prisma.order.delete({ where: { id : parsedId } });
+    await prisma.order.delete({ where: { id: parsedId } });
 
-    return res.json({ message: 'Order deleted successfully' });
+    res.json({ message: 'Order deleted successfully' });
   } catch (error) {
     console.error('Order deletion error:', error);
-    return handleError(res, error);
+    handleError(res, error);
   }
 };
 
@@ -340,50 +350,51 @@ export const deleteOrder = async (req: Request, res: Response): Promise<Response
 
 
 
-export const deleteAllOrders = async (req: Request, res: Response): Promise<Response | void> => {
+export const deleteAllOrders = async (req: Request, res: Response): Promise<void> => {
   const password = typeof req.query.password === "string" ? req.query.password : undefined;
-  
   const currentUser = req.user as User;
 
   if (!password) {
-    return res.status(400).json({ message: "Password is required" });
+    res.status(400).json({ message: "Password is required" });
+    return;
   }
 
-  // Corrected: fetch user from DB using their email
   const user = await prisma.user.findUnique({ where: { email: currentUser.email } });
 
   if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    res.status(404).json({ message: "User not found" });
+    return;
   }
 
   if (user.role !== "super_admin") {
-    return res.status(403).json({ message: "Forbidden: Only super admins can perform this action" });
+    res.status(403).json({ message: "Forbidden: Only super admins can perform this action" });
+    return;
   }
 
   if (!user.password) {
-    return res.status(401).json({ message: "Unauthorized: Missing user password" });
+    res.status(401).json({ message: "Unauthorized: Missing user password" });
+    return;
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.password);
 
   if (!isPasswordValid) {
-    return res.status(401).json({ message: "Unauthorized: Invalid password" });
+    res.status(401).json({ message: "Unauthorized: Invalid password" });
+    return;
   }
 
   try {
     const orders = await prisma.order.findMany();
 
     for (const order of orders) {
-      // Delete product images
       if (order.productImages && Array.isArray(order.productImages)) {
         deleteFiles(order.productImages as { path: string }[]);
       }
 
-      // Delete photos with comments
       if (order.photosWithComments && Array.isArray(order.photosWithComments)) {
-        const photosWithComments = order.photosWithComments as PhotoWithComment[];
+        const photosWithComments = order.photosWithComments as (PhotoWithComment | any)[];
         photosWithComments.forEach(item => {
-          if (item.photo) {
+          if (typeof item.photo === "string") {
             const photoPath = resolvePath(item.photo);
             if (fs.existsSync(photoPath)) {
               fs.unlinkSync(photoPath);
@@ -394,20 +405,14 @@ export const deleteAllOrders = async (req: Request, res: Response): Promise<Resp
           }
         });
       }
+
+      await prisma.order.delete({ where: { id: order.id } });
     }
 
-    const deletedCount = await prisma.order.deleteMany({});
-
-    console.log(`Successfully deleted ${deletedCount.count} orders`);
-
-    return res.json({ 
-      message: 'All orders deleted successfully', 
-      count: deletedCount.count 
-    });
-
+    res.json({ message: 'All orders deleted successfully' });
   } catch (error) {
-    console.error('Delete all orders error:', error);
-    return handleError(res, error);
+    console.error('Error deleting orders:', error);
+    res.status(500).json({ message: 'Error deleting orders', error: error });
   }
 };
 
