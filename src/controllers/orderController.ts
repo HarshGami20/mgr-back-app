@@ -1,5 +1,6 @@
 
 import { Request, Response } from "express";
+import bcrypt from "bcryptjs";
 import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -244,10 +245,11 @@ export const updateStatus = async (req: Request,res:Response): Promise<Response 
 export const getSingleOrder = async (req: Request, res: Response): Promise<Response | void> => {
   try {
     const { id } = req.params;
+    const parsedId = parseInt(id, 10); // Parse it into an integer
 
     const order = await prisma.order.findUnique({
-      where: { id: String(id) },
-      include: { createdBy: true }, // Include createdBy relation
+      where: { id: parsedId }, // Use the parsed integer ID
+      include: { createdBy: true },
     });
 
     if (!order) {
@@ -260,9 +262,6 @@ export const getSingleOrder = async (req: Request, res: Response): Promise<Respo
     return handleError(res, error);
   }
 };
-
-
-
 
 
 const resolvePath = (relativePath: string) => {
@@ -334,4 +333,81 @@ export const deleteOrder = async (req: Request, res: Response): Promise<Response
 };
 
 
+
+
+
+
+
+
+
+export const deleteAllOrders = async (req: Request, res: Response): Promise<Response | void> => {
+  const password = typeof req.query.password === "string" ? req.query.password : undefined;
+  
+  const currentUser = req.user as User;
+
+  if (!password) {
+    return res.status(400).json({ message: "Password is required" });
+  }
+
+  // Corrected: fetch user from DB using their email
+  const user = await prisma.user.findUnique({ where: { email: currentUser.email } });
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  if (user.role !== "super_admin") {
+    return res.status(403).json({ message: "Forbidden: Only super admins can perform this action" });
+  }
+
+  if (!user.password) {
+    return res.status(401).json({ message: "Unauthorized: Missing user password" });
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+
+  if (!isPasswordValid) {
+    return res.status(401).json({ message: "Unauthorized: Invalid password" });
+  }
+
+  try {
+    const orders = await prisma.order.findMany();
+
+    for (const order of orders) {
+      // Delete product images
+      if (order.productImages && Array.isArray(order.productImages)) {
+        deleteFiles(order.productImages as { path: string }[]);
+      }
+
+      // Delete photos with comments
+      if (order.photosWithComments && Array.isArray(order.photosWithComments)) {
+        const photosWithComments = order.photosWithComments as PhotoWithComment[];
+        photosWithComments.forEach(item => {
+          if (item.photo) {
+            const photoPath = resolvePath(item.photo);
+            if (fs.existsSync(photoPath)) {
+              fs.unlinkSync(photoPath);
+              console.log(`Deleted photo: ${photoPath}`);
+            } else {
+              console.warn(`Photo does not exist: ${photoPath}`);
+            }
+          }
+        });
+      }
+    }
+
+    const deletedCount = await prisma.order.deleteMany({});
+
+    console.log(`Successfully deleted ${deletedCount.count} orders`);
+
+    return res.json({ 
+      message: 'All orders deleted successfully', 
+      count: deletedCount.count 
+    });
+
+  } catch (error) {
+    console.error('Delete all orders error:', error);
+    return handleError(res, error);
+  }
+};
 
