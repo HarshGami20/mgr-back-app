@@ -1,34 +1,11 @@
-// import bcrypt from "bcryptjs";
-// import prisma from "../prisma";
-// import { generateToken } from "../utils/auth";
-// import { Request, Response } from "express"; 
-
-// export const register = async (req: Request, res: Response) => {
-//   const { name, email, password, role } = req.body;
-//   const hashed = await bcrypt.hash(password, 10);
-//   const user = await prisma.user.create({
-//     data: { name, email, password: hashed, role },
-//   });
-//   res.json({ user, token: generateToken(user) });
-// };
-
-// export const login = async (req: Request, res: Response) => {
-//   const { email, password } = req.body;
-//   const user = await prisma.user.findUnique({ where: { email } });
-//   if (!user || !(await bcrypt.compare(password, user.password))) {
-//     return res.status(401).json({ message: "Invalid credentials" });
-//   }
-//   res.json({ user, token: generateToken(user) });
-// };
-
 
 
 
 import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/auth";
 import { Request, Response } from "express";
-import { User } from "../types/custom";
 import { prisma } from "../prisma";
+import { User } from "../types/custom";
 
 // export const register = async (req: Request, res: Response): Promise<Response | any> => {
 //   const { name, email, password, role } = req.body;
@@ -64,14 +41,13 @@ import { prisma } from "../prisma";
 
 
 export const register = async (req: Request, res: Response): Promise<Response | any> => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, phone } = req.body; 
 
-  // const user: User = req.user as User;
+  const user: User = req.user as User;
 
-
-  // if (!user || user.role !== "super_admin") {
-  //   return res.status(403).json({ message: "Only super_admin can update passwords." });
-  // }
+  if (!user || user.role !== "super_admin") {
+    return res.status(403).json({ message: "Only super_admin can Create Account." });
+  }
 
   try {
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -82,7 +58,13 @@ export const register = async (req: Request, res: Response): Promise<Response | 
     const hashed = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { name, email, password: hashed, role },
+      data: {
+        name,
+        email,
+        phone,
+        password: hashed,
+        role,
+      },
     });
 
     return res.status(201).json({
@@ -90,6 +72,7 @@ export const register = async (req: Request, res: Response): Promise<Response | 
         id: user.id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         role: user.role,
       },
     });
@@ -116,6 +99,7 @@ export const login = async (req: Request, res: Response): Promise<Response | any
         id: user.id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         role: user.role,
       },
       token,
@@ -124,9 +108,9 @@ export const login = async (req: Request, res: Response): Promise<Response | any
     console.error("Login Error:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
-};
+}; 
 
-export const updatePassword = async (req: Request, res: Response): Promise<Response> => {
+export const updatePassword = async (req: Request, res: Response): Promise<Response | any> => {
   const user: User = req.user as User;
 
 

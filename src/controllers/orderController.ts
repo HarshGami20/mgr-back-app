@@ -1,25 +1,22 @@
 
 import { Request, Response } from "express";
+import bcrypt from "bcryptjs";
 import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { User } from "../types/custom";
+import { PhotoWithComment, User   } from "../types/custom";
 import { handleError } from "../utils/errorHandler";
 import { prisma } from "../prisma";
+import { getUserFromToken } from "../utils/auth";
 
 
-// const prisma = new PrismaClient();
 
 interface MulterFiles {
   [fieldname: string]: Express.Multer.File[];
 }
 
-interface PhotoWithComment {
-  photo: string | null;
-  comment: string;
-}
 
-// Configure multer for file storage
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../../uploads');
@@ -36,7 +33,7 @@ const storage = multer.diskStorage({
   
 const upload = multer({ storage });
 
-// Handle multiple uploads with fields
+
 const uploadMiddleware = upload.fields([
   { name: 'productImages', maxCount: 5 },
   { name: 'photosWithCommentsFiles', maxCount: 10 }
@@ -47,22 +44,22 @@ export const orderUpload = uploadMiddleware;
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
-    // Access uploaded files through req.files (already processed by multer middleware)
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const productImageFiles = files['productImages'] || [];
     const photosWithCommentsFiles = files['photosWithCommentsFiles'] || [];
-    
+    const user = getUserFromToken(req);
+
     // Get the uploaded product image paths
     const productImagePaths = productImageFiles.map(file => ({
       path: `/uploads/${file.filename}`,
       originalName: file.originalname
     }));
-    
+
     // Process photosWithComments data
     let photosWithComments = [];
     if (req.body.photosWithCommentsData) {
       const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData);
-      
+
       photosWithComments = photosWithCommentsData.map((item: any) => {
         const file = photosWithCommentsFiles[item.fileIndex];
         return {
@@ -71,7 +68,13 @@ export const createOrder = async (req: Request, res: Response) => {
         };
       });
     }
-    
+
+    // Process assignees
+    let assignees = [];
+    if (req.body.assignees) {
+      assignees = JSON.parse(req.body.assignees); // expects a JSON stringified array
+    }
+
     // Create the order with all necessary fields
     const order = await prisma.order.create({
       data: {
@@ -81,25 +84,26 @@ export const createOrder = async (req: Request, res: Response) => {
         modeOfPayment: req.body.modeOfPayment,
         advanceAmount: parseFloat(req.body.advanceAmount || '0'),
         lendingAmount: parseFloat(req.body.lendingAmount || '0'),
-        productImages: productImagePaths, // Store array of file paths as JSON
+        productImages: productImagePaths,
         description: req.body.description || '',
         orderStatus: req.body.orderStatus,
         paymentStatus: req.body.paymentStatus,
         commentsFromStaff: req.body.commentsFromStaff || '',
-        photosWithComments: photosWithComments, // Store processed photos with comments as JSON
+        photosWithComments: photosWithComments,
         dateOfDelivery: new Date(req.body.dateOfDelivery),
         orderCategory: req.body.orderCategory,
-        createdById: "cm9glbvab0001ulpgtgq77j0n", // Replace with actual user ID from auth context
+        createdById: user.id , // Replace with actual user ID from auth
+        assignees: assignees, // <--- added this
       }
     });
-    
+
     res.status(201).json({
       message: 'Order created successfully',
       order
     });
   } catch (error) {
     console.error('Order creation error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Failed to create order',
       error: error instanceof Error ? error.message : String(error)
     });
@@ -107,205 +111,27 @@ export const createOrder = async (req: Request, res: Response) => {
 };
 
 
+
 export const getOrders = async (req: Request, res: Response): Promise<Response | any> => {
   try {
     const orders = await prisma.order.findMany({
       include: { createdBy: true }
     });
-    return res.json(orders);
+     res.json(orders);
   } catch (error) {
     console.error(error);
-    return handleError(res, error);
+     handleError(res, error);
   }
 };
 
-// export const updateOrder = async (req: Request, res: Response): Promise<Response | any> => {
-//   const { id } = req.params;
-//   const user: User = req.user as User;
-  
-//   try {
-//     const order = await prisma.order.findUnique({
-//       where: { id },
-//     });
-    
-//     if (!order) {
-//       return res.status(404).json({ message: "Order not found" });
-//     }
-    
-//     if (user.role === "sales_person" && order.createdById !== user.id) {
-//       return res.status(403).json({ message: "Forbidden" });
-//     }
-    
-//     if (user.role === "worker") {
-//       return res.status(403).json({ message: "Forbidden" });
-//     }
-    
-//     // Access uploaded files through req.files (already processed by multer middleware)
-//     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-//     const productImageFiles = files['productImages'] || [];
-//     const photosWithCommentsFiles = files['photosWithCommentsFiles'] || [];
-    
-//     // Get the uploaded product image paths
-//     const productImagePaths = productImageFiles.map(file => ({
-//       path: `/uploads/${file.filename}`,
-//       originalName: file.originalname
-//     }));
-    
-//     // Process photosWithComments data
-//     let photosWithComments = [];
-//     if (req.body.photosWithCommentsData) {
-//       const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData);
-      
-//       photosWithComments = photosWithCommentsData.map((item: any) => {
-//         // Check if this is a new file or an existing one
-//         if (item.fileIndex !== undefined) {
-//           const file = photosWithCommentsFiles[item.fileIndex];
-//           return {
-//             photo: file ? `/uploads/${file.filename}` : null,
-//             comment: item.comment
-//           };
-//         } else {
-//           // This is an existing file, preserve the photo path
-//           return {
-//             photo: item.photo,
-//             comment: item.comment
-//           };
-//         }
-//       });
-//     }
-    
-//     // Prepare update data
-//     const updateData: any = { ...req.body };
-    
-//     // Only update images if new ones were uploaded
-//     if (productImageFiles.length > 0) {
-//       updateData.productImages = productImagePaths;
-//     }
-    
-//     // Only update photosWithComments if new data was provided
-//     if (req.body.photosWithCommentsData) {
-//       updateData.photosWithComments = photosWithComments;
-//     }
-    
-//     // Handle numeric fields
-//     if (updateData.totalAmount) updateData.totalAmount = parseFloat(updateData.totalAmount);
-//     if (updateData.advanceAmount) updateData.advanceAmount = parseFloat(updateData.advanceAmount || '0');
-//     if (updateData.lendingAmount) updateData.lendingAmount = parseFloat(updateData.lendingAmount || '0');
-//     if (updateData.dateOfDelivery) updateData.dateOfDelivery = new Date(updateData.dateOfDelivery);
-    
-//     // Remove any fields that shouldn't be part of the update
-//     delete updateData.photosWithCommentsData;
-//     delete updateData.photosWithCommentsFiles;
-//     delete updateData.productImages;
-    
-//     const updatedOrder = await prisma.order.update({
-//       where: { id },
-//       data: updateData,
-//     });
-    
-//     return res.json({
-//       message: 'Order updated successfully',
-//       order: updatedOrder
-//     });
-//   } catch (error) {
-//     console.error('Order update error:', error);
-//     return handleError(res, error);
-//   }
-// };
-
-
-// export const updateOrder = async (req: Request, res: Response): Promise<Response | any> => {
-//   const { id } = req.params;
-//   const user: User = req.user as User;
-
-//   try {
-//     const order = await prisma.order.findUnique({ where: { id } });
-
-//     if (!order) {
-//       return res.status(404).json({ message: "Order not found" });
-//     }
-
-//     if (user.role === "sales_person" && order.createdById !== user.id) {
-//       return res.status(403).json({ message: "Forbidden" });
-//     }
-
-//     if (user.role === "worker") {
-//       return res.status(403).json({ message: "Forbidden" });
-//     }
-
-//     // Check if req.files exists and contains the expected fields
-//     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    
-//     if (!files || !files['productImages'] || !files['photosWithCommentsFiles']) {
-//       console.log('No files found in the request');
-//     }
-
-//     const productImageFiles = files?.['productImages'] || [];
-//     const photosWithCommentsFiles = files?.['photosWithCommentsFiles'] || [];
-
-//     // Get the uploaded product image paths
-//     const productImagePaths = productImageFiles.map(file => ({
-//       path: `/uploads/${file.filename}`,
-//       originalName: file.originalname,
-//     }));
-
-//     let photosWithComments = [];
-//     if (req.body.photosWithCommentsData) {
-//       const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData);
-//       photosWithComments = photosWithCommentsData.map((item: any) => {
-//         if (item.fileIndex !== undefined) {
-//           const file = photosWithCommentsFiles[item.fileIndex];
-//           return {
-//             photo: file ? `/uploads/${file.filename}` : null,
-//             comment: item.comment,
-//           };
-//         } else {
-//           return { photo: item.photo, comment: item.comment };
-//         }
-//       });
-//     }
-
-//     const updateData: any = { ...req.body };
-    
-//     if (productImageFiles.length > 0) {
-//       updateData.productImages = productImagePaths;
-//     }
-
-//     if (req.body.photosWithCommentsData) {
-//       updateData.photosWithComments = photosWithComments;
-//     }
-
-//     // Handle numeric fields
-//     if (updateData.totalAmount) updateData.totalAmount = parseFloat(updateData.totalAmount);
-//     if (updateData.advanceAmount) updateData.advanceAmount = parseFloat(updateData.advanceAmount || '0');
-//     if (updateData.lendingAmount) updateData.lendingAmount = parseFloat(updateData.lendingAmount || '0');
-//     if (updateData.dateOfDelivery) updateData.dateOfDelivery = new Date(updateData.dateOfDelivery);
-
-//     delete updateData.photosWithCommentsData;
-//     delete updateData.photosWithCommentsFiles;
-//     delete updateData.productImages;
-
-//     const updatedOrder = await prisma.order.update({
-//       where: { id },
-//       data: updateData,
-//     });
-
-//     return res.json({
-//       message: 'Order updated successfully',
-//       order: updatedOrder
-//     });
-//   } catch (error) {
-//     console.error('Order update error:', error);
-//     return handleError(res, error);
-//   }
-// };
 
 export const updateOrder = async (req: Request, res: Response): Promise<Response | any> => {
   const { id } = req.params;
+  const parsedId = parseInt(id, 10); // Parse it into an integer
   const user: User = req.user as User;
 
   try {
-    const order = await prisma.order.findUnique({ where: { id } });
+    const order = await prisma.order.findUnique({ where: { id : parsedId } });
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
@@ -334,7 +160,7 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
     // ✅ Merge photosWithComments (new files + existing)
     const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData || "[]");
 
-    const photosWithComments = photosWithCommentsData.map((item: any, index: number) => {
+    const photosWithComments = photosWithCommentsData.map((item: any) => {
       if (item.fileIndex !== undefined) {
         const file = photosWithCommentsFiles[item.fileIndex];
         return {
@@ -348,6 +174,12 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
         };
       }
     });
+
+    // ✅ Process assignees
+    let assignees = [];
+    if (req.body.assignees) {
+      assignees = JSON.parse(req.body.assignees); // expects a JSON stringified array
+    }
 
     const updateData: any = {
       customerName: req.body.customerName,
@@ -364,10 +196,11 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
       orderCategory: req.body.orderCategory,
       productImages: productImages,
       photosWithComments: photosWithComments,
+      assignees: assignees, // 🔥 added here
     };
 
     const updatedOrder = await prisma.order.update({
-      where: { id },
+      where: { id : parsedId },
       data: updateData,
     });
 
@@ -381,80 +214,18 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
   }
 };
 
-// Function to delete files from disk
-const deleteFiles = (files: { path: string }[]) => {
-  files.forEach(file => {
-    if (!file.path) {
-      console.warn(`Warning: Missing path for file`, file);  // Log for debugging
-      return;  // Skip this file if path is missing
-    }
-    
-    const filePath = path.join(__dirname, '../../', file.path);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);  // Delete the file from disk
-      console.log(`Deleted file: ${filePath}`);  // Log file deletion for debugging
-    } else {
-      console.warn(`File does not exist: ${filePath}`);  // Log if file does not exist
-    }
-  });
-};
 
-export const deleteOrder = async (req: Request, res: Response): Promise<Response | any> => {
-  const { id } = req.params;
-  const user = req.user as User;
 
-  try {
-    const order = await prisma.order.findUnique({ where: { id } });
-
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    if (user.role === "sales_person" && order.createdById !== user.id) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    if (user.role === "worker") {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-
-    // Delete files associated with the order (if any)
-    if (order.productImages && Array.isArray(order.productImages)) {
-      // Ensure the path is defined and valid before attempting deletion
-      deleteFiles(order.productImages as { path: string }[]);
-    }
-
-    if (order.photosWithComments) {
-      const photosWithComments = order.photosWithComments as PhotoWithComment[];
-      photosWithComments.forEach(item => {
-        if (item.photo) {
-          const photoPath = path.join(__dirname, '../../', item.photo);
-          if (fs.existsSync(photoPath)) {
-            fs.unlinkSync(photoPath);  // Delete each photo
-            console.log(`Deleted photo: ${photoPath}`);  // Log photo deletion for debugging
-          } else {
-            console.warn(`Photo does not exist: ${photoPath}`);  // Log if photo does not exist
-          }
-        }
-      });
-    }
-
-    // Delete the order from the database
-    await prisma.order.delete({ where: { id } });
-
-    return res.json({ message: 'Order deleted successfully' });
-  } catch (error) {
-    console.error('Order deletion error:', error);
-    return handleError(res, error);
-  }
-};
 
 export const updateStatus = async (req: Request,res:Response): Promise<Response | any> =>{
   const { id } = req.params;
+  const parsedId = parseInt(id, 10); // Parse it into an integer
   const { orderStatus, paymentStatus, commentsFromStaff } = req.body;
 
 
   try {
     const updatedOrder = await prisma.order.update({
-      where: { id },
+      where: { id : parsedId  },
       data: {
         orderStatus,
         paymentStatus,
@@ -474,10 +245,11 @@ export const updateStatus = async (req: Request,res:Response): Promise<Response 
 export const getSingleOrder = async (req: Request, res: Response): Promise<Response | void> => {
   try {
     const { id } = req.params;
+    const parsedId = parseInt(id, 10); // Parse it into an integer
 
     const order = await prisma.order.findUnique({
-      where: { id: String(id) },
-      include: { createdBy: true }, // Include createdBy relation
+      where: { id: parsedId }, // Use the parsed integer ID
+      include: { createdBy: true },
     });
 
     if (!order) {
@@ -490,3 +262,152 @@ export const getSingleOrder = async (req: Request, res: Response): Promise<Respo
     return handleError(res, error);
   }
 };
+
+
+const resolvePath = (relativePath: string) => {
+  return path.resolve(process.cwd(), relativePath);
+};
+
+const deleteFiles = (files: { path: string }[]) => {
+  files.forEach(file => {
+    if (!file.path) {
+      console.warn(`Warning: Missing path for file`, file);
+      return;
+    }
+
+    const filePath = resolvePath(file.path);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`Deleted file: ${filePath}`);
+    } else {
+      console.warn(`File does not exist: ${filePath}`);
+    }
+  });
+};
+
+export const deleteOrder = async (req: Request, res: Response): Promise<Response | void> => {
+  const { id } = req.params;
+  const parsedId = parseInt(id, 10); 
+  const user = req.user as User;
+
+  try {
+    const order = await prisma.order.findUnique({ where: { id : parsedId  } });
+
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (user.role === "sales_person" && order.createdById !== user.id) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (user.role === "worker") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // Delete files associated with the order (if any)
+    if (order.productImages && Array.isArray(order.productImages)) {
+      deleteFiles(order.productImages as { path: string }[]);
+    }
+
+    if (order.photosWithComments && Array.isArray(order.photosWithComments)) {
+      const photosWithComments = order.photosWithComments as PhotoWithComment[];
+      photosWithComments.forEach(item => {
+        if (item.photo) {
+          const photoPath = resolvePath(item.photo);
+          if (fs.existsSync(photoPath)) {
+            fs.unlinkSync(photoPath);
+            console.log(`Deleted photo: ${photoPath}`);
+          } else {
+            console.warn(`Photo does not exist: ${photoPath}`);
+          }
+        }
+      });
+    }
+
+    await prisma.order.delete({ where: { id : parsedId } });
+
+    return res.json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    console.error('Order deletion error:', error);
+    return handleError(res, error);
+  }
+};
+
+
+
+
+
+
+
+
+
+export const deleteAllOrders = async (req: Request, res: Response): Promise<Response | void> => {
+  const password = typeof req.query.password === "string" ? req.query.password : undefined;
+  
+  const currentUser = req.user as User;
+
+  if (!password) {
+    return res.status(400).json({ message: "Password is required" });
+  }
+
+  // Corrected: fetch user from DB using their email
+  const user = await prisma.user.findUnique({ where: { email: currentUser.email } });
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  if (user.role !== "super_admin") {
+    return res.status(403).json({ message: "Forbidden: Only super admins can perform this action" });
+  }
+
+  if (!user.password) {
+    return res.status(401).json({ message: "Unauthorized: Missing user password" });
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+
+  if (!isPasswordValid) {
+    return res.status(401).json({ message: "Unauthorized: Invalid password" });
+  }
+
+  try {
+    const orders = await prisma.order.findMany();
+
+    for (const order of orders) {
+      // Delete product images
+      if (order.productImages && Array.isArray(order.productImages)) {
+        deleteFiles(order.productImages as { path: string }[]);
+      }
+
+      // Delete photos with comments
+      if (order.photosWithComments && Array.isArray(order.photosWithComments)) {
+        const photosWithComments = order.photosWithComments as PhotoWithComment[];
+        photosWithComments.forEach(item => {
+          if (item.photo) {
+            const photoPath = resolvePath(item.photo);
+            if (fs.existsSync(photoPath)) {
+              fs.unlinkSync(photoPath);
+              console.log(`Deleted photo: ${photoPath}`);
+            } else {
+              console.warn(`Photo does not exist: ${photoPath}`);
+            }
+          }
+        });
+      }
+    }
+
+    const deletedCount = await prisma.order.deleteMany({});
+
+    console.log(`Successfully deleted ${deletedCount.count} orders`);
+
+    return res.json({ 
+      message: 'All orders deleted successfully', 
+      count: deletedCount.count 
+    });
+
+  } catch (error) {
+    console.error('Delete all orders error:', error);
+    return handleError(res, error);
+  }
+};
+

@@ -1,20 +1,25 @@
 // src/types/custom.d.ts
-import { Request } from "express";
 
-// Define a User interface to match the expected structure
-interface User {
+export type UserRole = "super_admin" | "admin" | "sales_person" | "worker";
+
+export interface User {
   id: string;
   name: string;
   email: string;
+  phone: string;
   password: string;
-  role: string;  // or whatever type your 'role' is
+  role: UserRole;
 }
 
-// Extend the Request interface to include 'user'
 declare global {
   namespace Express {
     interface Request {
-      user?: User;  // Optional user property on the request
+      user?: User;
     }
   }
+}
+
+export interface PhotoWithComment {
+  photo: string | null;
+  comment: string;
 }
