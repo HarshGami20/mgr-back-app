@@ -110,8 +110,6 @@ export const createOrder = async (req: Request, res: Response) => {
   }
 };
 
-
-
 export const getOrders = async (req: Request, res: Response): Promise<Response | any> => {
   try {
     const orders = await prisma.order.findMany({
@@ -123,7 +121,6 @@ export const getOrders = async (req: Request, res: Response): Promise<Response |
      handleError(res, error);
   }
 };
-
 
 export const updateOrder = async (req: Request, res: Response): Promise<Response | any> => {
   const { id } = req.params;
@@ -214,9 +211,6 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
   }
 };
 
-
-
-
 export const updateStatus = async (req: Request,res:Response): Promise<Response | any> =>{
   const { id } = req.params;
   const parsedId = parseInt(id, 10); // Parse it into an integer
@@ -239,9 +233,6 @@ export const updateStatus = async (req: Request,res:Response): Promise<Response 
   }
 }
 
-
-
-
 export const getSingleOrder = async (req: Request, res: Response): Promise<Response | void> => {
   try {
     const { id } = req.params;
@@ -262,7 +253,6 @@ export const getSingleOrder = async (req: Request, res: Response): Promise<Respo
     return handleError(res, error);
   }
 };
-
 
 const resolvePath = (relativePath: string) => {
   return path.resolve(process.cwd(), relativePath);
@@ -341,14 +331,6 @@ export const deleteOrder = async (req: Request, res: Response): Promise<void> =>
     handleError(res, error);
   }
 };
-
-
-
-
-
-
-
-
 
 export const deleteAllOrders = async (req: Request, res: Response): Promise<void> => {
   const password = typeof req.query.password === "string" ? req.query.password : undefined;
