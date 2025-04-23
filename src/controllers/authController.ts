@@ -110,37 +110,86 @@ export const login = async (req: Request, res: Response): Promise<Response | any
   }
 }; 
 
-export const updatePassword = async (req: Request, res: Response): Promise<Response | any> => {
+// export const updatePassword = async (req: Request, res: Response): Promise<Response | any> => {
+//   const user: User = req.user as User;
+
+
+//   if (!user || user.role !== "super_admin") {
+//     return res.status(403).json({ message: "Only super_admin can update passwords." });
+//   }
+
+//   const { userId, newPassword } = req.body;
+
+//   if (!userId || !newPassword) {
+//     return res.status(400).json({ message: "userId and newPassword are required." });
+//   }
+
+//   try {
+//     const user = await prisma.user.findUnique({ where: { id: userId } });
+
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found." });
+//     }
+
+//     const hashed = await bcrypt.hash(newPassword, 10);
+
+//     await prisma.user.update({
+//       where: { id: userId },
+//       data: { password: hashed },
+//     });
+
+//     return res.status(200).json({ message: `Password updated for ${user.email}` });
+//   } catch (error) {
+//     console.error("Update Password Error:", error);
+//     return res.status(500).json({ message: "Something went wrong" });
+//   }
+// };
+
+
+
+export const updateUserInfo = async (req: Request, res: Response): Promise<Response | any> => {
   const user: User = req.user as User;
 
-
   if (!user || user.role !== "super_admin") {
-    return res.status(403).json({ message: "Only super_admin can update passwords." });
+    return res.status(403).json({ message: "Only super_admin can update user information." });
   }
 
-  const { userId, newPassword } = req.body;
+  const { userId, newPassword, newPhone } = req.body;
 
-  if (!userId || !newPassword) {
-    return res.status(400).json({ message: "userId and newPassword are required." });
+  if (!userId) {
+    return res.status(400).json({ message: "userId is required." });
+  }
+
+  if (!newPassword && !newPhone) {
+    return res.status(400).json({ message: "At least one of newPassword or newPhone is required." });
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
 
-    if (!user) {
+    if (!existingUser) {
       return res.status(404).json({ message: "User not found." });
     }
 
-    const hashed = await bcrypt.hash(newPassword, 10);
+    const updateData: any = {};
+
+    if (newPassword) {
+      const hashed = await bcrypt.hash(newPassword, 10);
+      updateData.password = hashed;
+    }
+
+    if (newPhone) {
+      updateData.phone = newPhone;
+    }
 
     await prisma.user.update({
       where: { id: userId },
-      data: { password: hashed },
+      data: updateData,
     });
 
-    return res.status(200).json({ message: `Password updated for ${user.email}` });
+    return res.status(200).json({ message: `User information updated successfully.` });
   } catch (error) {
-    console.error("Update Password Error:", error);
-    return res.status(500).json({ message: "Something went wrong" });
+    console.error("Update User Info Error:", error);
+    return res.status(500).json({ message: "Something went wrong." });
   }
 };
