@@ -2,7 +2,7 @@
 
 import express, { Request, Response } from "express";
 import { authMiddleware } from "../middleware/authMiddleware";
-import { createOrder, deleteAllOrders, deleteOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
+import { addCommentToOrder, createOrder, deleteAllOrders, deleteOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
 import { getReports } from "../controllers/reportController";
 import { login, register, updateUserInfo } from "../controllers/authController";
 import { getAllUsers, updateUserRole } from "../controllers/userController";
@@ -42,6 +42,7 @@ router.delete('/orders/:id', deleteOrder);
 router.get('/users', getAllUsers);
 router.put('/users/:id', updateUserRole);
 router.patch('/orders/:id/update-status', updateStatus);
+router.post("/orders/comments", addCommentToOrder);
 router.get("/reports", getReports);
 
 export default router;

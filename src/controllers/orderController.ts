@@ -85,10 +85,10 @@ export const createOrder = async (req: Request, res: Response) => {
         advanceAmount: parseFloat(req.body.advanceAmount || '0'),
         lendingAmount: parseFloat(req.body.lendingAmount || '0'),
         productImages: productImagePaths,
-        description: req.body.description || '',
+        // description: req.body.description || '',
         orderStatus: req.body.orderStatus,
         paymentStatus: req.body.paymentStatus,
-        commentsFromStaff: req.body.commentsFromStaff || '',
+        commentsFromStaff: req.body.commentsFromStaff ? JSON.parse(req.body.commentsFromStaff): [],
         photosWithComments: photosWithComments,
         dateOfDelivery: new Date(req.body.dateOfDelivery),
         orderCategory: req.body.orderCategory,
@@ -178,6 +178,20 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
       assignees = JSON.parse(req.body.assignees); // expects a JSON stringified array
     }
 
+
+    const existingComments = JSON.parse(req.body.existingCommentsFromStaff || "[]");
+    const newComments = JSON.parse(req.body.newCommentsFromStaff || "[]");
+
+    const commentsFromStaff = [
+      ...existingComments,
+      ...newComments.map((item: any) => ({
+        comment: item.comment,
+        commentedBy: item.commentedBy,
+        timestamp: item.timestamp || new Date().toISOString(),
+      }))
+    ];
+
+
     const updateData: any = {
       customerName: req.body.customerName,
       phoneNumber: req.body.phoneNumber,
@@ -185,10 +199,11 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
       modeOfPayment: req.body.modeOfPayment,
       advanceAmount: parseFloat(req.body.advanceAmount || '0'),
       lendingAmount: parseFloat(req.body.lendingAmount || '0'),
-      description: req.body.description,
       orderStatus: req.body.orderStatus,
       paymentStatus: req.body.paymentStatus,
-      commentsFromStaff: req.body.commentsFromStaff,
+      // commentsFromStaff: req.body.commentsFromStaff,
+      commentsFromStaff: JSON.parse(req.body.commentsFromStaff || "[]"),
+
       dateOfDelivery: new Date(req.body.dateOfDelivery),
       orderCategory: req.body.orderCategory,
       productImages: productImages,
@@ -210,6 +225,51 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
     return handleError(res, error);
   }
 };
+
+
+export const addCommentToOrder = async (req: Request, res: Response): Promise<Response | any> => {
+  const { orderId, comment,commentedBy  } = req.body;
+  const user = getUserFromToken(req) as { id: string };
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(orderId) },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+console.log(user)
+    // Ensure commentsFromStaff is an array, even if it's null or undefined
+    const existingComments = Array.isArray(order.commentsFromStaff)
+      ? order.commentsFromStaff: []; // Default to empty array if commentsFromStaff is not an array
+
+    const updatedComments = [
+      ...existingComments,
+      {
+        comment,
+        commentedBy,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    // Update the order with the new comments
+    const updatedOrder = await prisma.order.update({
+      where: { id: parseInt(orderId) },
+      data: {
+        commentsFromStaff: updatedComments, // Make sure this is properly formatted as an array
+      },
+    });
+
+    res.json({ message: "Comment added", order: updatedOrder });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to add comment" });
+  }
+};
+
+
+
 
 export const updateStatus = async (req: Request,res:Response): Promise<Response | any> =>{
   const { id } = req.params;
