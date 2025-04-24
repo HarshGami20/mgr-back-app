@@ -85,7 +85,6 @@ export const createOrder = async (req: Request, res: Response) => {
         advanceAmount: parseFloat(req.body.advanceAmount || '0'),
         lendingAmount: parseFloat(req.body.lendingAmount || '0'),
         productImages: productImagePaths,
-        // description: req.body.description || '',
         orderStatus: req.body.orderStatus,
         paymentStatus: req.body.paymentStatus,
         commentsFromStaff: req.body.commentsFromStaff ? JSON.parse(req.body.commentsFromStaff): [],

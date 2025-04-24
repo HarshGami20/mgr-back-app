@@ -26,7 +26,6 @@ model Order {
   advanceAmount      Float
   lendingAmount      Float
   productImages      Json     // Changed from String[] to Json
-//  description        String
   orderStatus        String
   paymentStatus      String
 // commentsFromStaff  String
