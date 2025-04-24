@@ -42,7 +42,76 @@ const uploadMiddleware = upload.fields([
 export const orderUpload = uploadMiddleware;
 
 
-export const createOrder = async (req: Request, res: Response) => {
+// export const createOrder = async (req: Request, res: Response) => {
+//   try {
+//     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+//     const productImageFiles = files['productImages'] || [];
+//     const photosWithCommentsFiles = files['photosWithCommentsFiles'] || [];
+//     const user = getUserFromToken(req) as { id: string };
+
+//     // Get the uploaded product image paths
+//     const productImagePaths = productImageFiles.map(file => ({
+//       path: `/uploads/${file.filename}`,
+//       originalName: file.originalname
+//     }));
+
+//     // Process photosWithComments data
+//     let photosWithComments = [];
+//     if (req.body.photosWithCommentsData) {
+//       const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData);
+
+//       photosWithComments = photosWithCommentsData.map((item: any) => {
+//         const file = photosWithCommentsFiles[item.fileIndex];
+//         return {
+//           photo: file ? `/uploads/${file.filename}` : null,
+//           comment: item.comment
+//         };
+//       });
+//     }
+
+//     // Process assignees
+//     let assignees = [];
+//     if (req.body.assignees) {
+//       assignees = JSON.parse(req.body.assignees); // expects a JSON stringified array
+//     }
+
+//     // Create the order with all necessary fields
+//     const order = await prisma.order.create({
+//       data: {
+//         customerName: req.body.customerName,
+//         phoneNumber: req.body.phoneNumber,
+//         totalAmount: parseFloat(req.body.totalAmount),
+//         modeOfPayment: req.body.modeOfPayment,
+//         advanceAmount: parseFloat(req.body.advanceAmount || '0'),
+//         lendingAmount: parseFloat(req.body.lendingAmount || '0'),
+//         productImages: productImagePaths,
+//         orderStatus: req.body.orderStatus,
+//         paymentStatus: req.body.paymentStatus,
+//         commentsFromStaff: req.body.commentsFromStaff ? JSON.parse(req.body.commentsFromStaff): [],
+//         photosWithComments: photosWithComments,
+//         dateOfDelivery: new Date(req.body.dateOfDelivery),
+//         orderCategory: req.body.orderCategory,
+//         createdById: user.id , // Replace with actual user ID from auth
+//         assignees: assignees, // <--- added this
+//       }
+//     });
+
+//     res.status(201).json({
+//       message: 'Order created successfully',
+//       order
+//     });
+//   } catch (error) {
+//     console.error('Order creation error:', error);
+//     res.status(500).json({
+//       message: 'Failed to create order',
+//       error: error instanceof Error ? error.message : String(error)
+//     });
+//   }
+// };
+
+
+
+export const createOrder = async (req: Request, res: Response): Promise<Response | any>  => {
   try {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const productImageFiles = files['productImages'] || [];
@@ -72,7 +141,18 @@ export const createOrder = async (req: Request, res: Response) => {
     // Process assignees
     let assignees = [];
     if (req.body.assignees) {
-      assignees = JSON.parse(req.body.assignees); // expects a JSON stringified array
+      try {
+        assignees = JSON.parse(req.body.assignees); // expects a JSON stringified array
+      } catch (e) {
+        throw new Error('Assignees data is not valid JSON');
+      }
+    }
+
+    // Validate required fields
+    if (!req.body.customerName || !req.body.phoneNumber || !req.body.totalAmount || !req.body.modeOfPayment) {
+      return res.status(400).json({
+        message: 'Missing required fields: customerName, phoneNumber, totalAmount, or modeOfPayment',
+      });
     }
 
     // Create the order with all necessary fields
@@ -87,27 +167,29 @@ export const createOrder = async (req: Request, res: Response) => {
         productImages: productImagePaths,
         orderStatus: req.body.orderStatus,
         paymentStatus: req.body.paymentStatus,
-        commentsFromStaff: req.body.commentsFromStaff ? JSON.parse(req.body.commentsFromStaff): [],
+        commentsFromStaff: req.body.commentsFromStaff ? JSON.parse(req.body.commentsFromStaff) : [],
         photosWithComments: photosWithComments,
         dateOfDelivery: new Date(req.body.dateOfDelivery),
         orderCategory: req.body.orderCategory,
-        createdById: user.id , // Replace with actual user ID from auth
+        createdById: user.id, // Replace with actual user ID from auth
         assignees: assignees, // <--- added this
       }
     });
 
     res.status(201).json({
       message: 'Order created successfully',
-      order
+      order,
     });
   } catch (error) {
     console.error('Order creation error:', error);
     res.status(500).json({
       message: 'Failed to create order',
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
+
+
 
 export const getOrders = async (req: Request, res: Response): Promise<Response | any> => {
   try {
