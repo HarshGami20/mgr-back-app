@@ -2,7 +2,7 @@
 
 import express, { Request, Response } from "express";
 import { authMiddleware } from "../middleware/authMiddleware";
-import { addCommentToOrder, createOrder, deleteAllOrders, deleteOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
+import { addCommentToOrder, createOrder, deleteAllOrders, deleteOrder, getOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
 import { getReports } from "../controllers/reportController";
 import { login, register, updateUserInfo } from "../controllers/authController";
 import { getAllUsers, updateUserRole } from "../controllers/userController";
@@ -36,6 +36,7 @@ router.use(authMiddleware);
 // Protected routes
 router.post('/orders', orderUpload, createOrder);
 router.get("/orders", getOrders);
+router.get("/order/:id", getOrder);
 router.put("/orders/id=:id", orderUpload, updateOrder);
 router.delete('/orders/all', requireSuperAdmin, deleteAllOrders);
 router.delete('/orders/:id', deleteOrder);

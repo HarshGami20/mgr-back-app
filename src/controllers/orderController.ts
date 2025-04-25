@@ -154,27 +154,42 @@ export const createOrder = async (req: Request, res: Response): Promise <Respons
       });
     }
 
+
+    // Parse amounts safely
+    const totalAmount = parseFloat(req.body.totalAmount || '0');
+    const advanceAmount = parseFloat(req.body.advanceAmount || '0');
+    const lendingAmount = parseFloat(req.body.lendingAmount || '0');
+
+    // Auto-calculate paymentStatus
+    let paymentStatus = 'Due';
+    if (lendingAmount === 0) {
+      paymentStatus = 'Received';
+    } else if (advanceAmount >= totalAmount) {
+      paymentStatus = 'Received';
+    } else if (advanceAmount > 0) {
+      paymentStatus = 'Partial';
+    }
+
     // Create the order with all necessary fields
     const order = await prisma.order.create({
       data: {
         customerName: req.body.customerName,
         phoneNumber: req.body.phoneNumber,
-        totalAmount: parseFloat(req.body.totalAmount),
+        totalAmount,
         modeOfPayment: req.body.modeOfPayment,
-        advanceAmount: parseFloat(req.body.advanceAmount || '0'),
-        lendingAmount: parseFloat(req.body.lendingAmount || '0'),
+        advanceAmount,
+        lendingAmount,
         productImages: productImagePaths,
         orderStatus: req.body.orderStatus,
-        paymentStatus: req.body.paymentStatus,
+        paymentStatus,
         commentsFromStaff: req.body.commentsFromStaff ? JSON.parse(req.body.commentsFromStaff) : [],
         photosWithComments: photosWithComments,
         dateOfDelivery: new Date(req.body.dateOfDelivery),
         orderCategory: req.body.orderCategory,
-        createdById: user.id, // Replace with actual user ID from auth
-        assignees: assignees, // <--- added this
+        createdById: user.id, 
+        assignees: assignees, 
       }
     });
-
     res.status(201).json({
       message: 'Order created successfully',
       order,
@@ -199,6 +214,32 @@ export const getOrders = async (req: Request, res: Response): Promise<Response |
      handleError(res, error);
   }
 };
+
+export const getOrder = async (req: Request, res: Response): Promise<Response | any> => {
+  const { id } = req.params; // Extract order ID from request parameters
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(id, 10) }, // Use the order ID to fetch the specific order
+      include: {  createdBy: {
+        select: {
+          name: true, 
+          role: true, 
+        }
+      }, payments : true}, // Optionally include related data, like createdBy
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" }); // Handle case where order does not exist
+    }
+
+    res.json(order); // Send the fetched order as response
+  } catch (error) {
+    console.error(error);
+    handleError(res, error); // Handle any errors that occur during the request
+  }
+};
+
 
 export const updateOrder = async (req: Request, res: Response): Promise<Response | any> => {
   const { id } = req.params;
@@ -347,12 +388,10 @@ console.log(user)
 };
 
 
-
-
 export const updateStatus = async (req: Request,res:Response): Promise<Response | any> =>{
   const { id } = req.params;
   const parsedId = parseInt(id, 10); // Parse it into an integer
-  const { orderStatus, paymentStatus, commentsFromStaff } = req.body;
+  const { orderStatus, paymentStatus ,lendingAmount, payments  } = req.body;
 
 
   try {
@@ -361,12 +400,47 @@ export const updateStatus = async (req: Request,res:Response): Promise<Response 
       data: {
         orderStatus,
         paymentStatus,
-        commentsFromStaff
+        lendingAmount
       },
     });
 
-    res.status(200).json(updatedOrder);
+
+    // Check if payment status is not 'received'
+    if (paymentStatus !== 'received') {
+      // Ensure payments is an array and has at least one payment
+      if (Array.isArray(payments) && payments.length > 0) {
+        for (const payment of payments) {
+          // Create multiple payment records for the order
+          await prisma.payment.create({
+            data: {
+              // orderId: updatedOrder.id,     // Link to the updated order
+              amount: parseFloat(payment.amount),  // Payment amount (ensure it's a valid number)
+              method: payment.method,              // Payment method (e.g., "cash", "card", "upi")
+              order: {
+                connect: {
+                  id: updatedOrder.id, // The ID of the order you're associating the payment with
+                },
+              },
+              paymentDate: new Date().toISOString(),
+            },
+          });
+        }
+      }
+    }
+
+
+    
+    // Return the updated order along with payments
+    const orderWithPayments = await prisma.order.findUnique({
+      where: { id: updatedOrder.id },
+      include: {
+        payments: true, // Include payments in the response
+      },
+    });
+
+    res.status(200).json(orderWithPayments);
   } catch (err) {
+    console.error("Error updating order status:", err);
     res.status(500).json({ error: 'Failed to update order status' });
   }
 }

@@ -5,4 +5,4 @@
 
 */
 -- AlterTable
-ALTER TABLE `order` DROP COLUMN `description`;
+-- ALTER TABLE `order` DROP COLUMN `description`;

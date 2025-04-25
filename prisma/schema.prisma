@@ -27,7 +27,7 @@ model Order {
   lendingAmount      Float
   productImages      Json     // Changed from String[] to Json
   orderStatus        String
-  paymentStatus      String
+  paymentStatus      String    // recived ,due ,partial
 // commentsFromStaff  String
   commentsFromStaff Json
   photosWithComments Json
@@ -37,6 +37,7 @@ model Order {
   createdBy          User     @relation("CreatedOrders", fields: [createdById], references: [id])
   createdById        String
   assignees          Json     // <<< add this line for assignee array
+  payments       Payment[] @relation("OrderPayments")
 }
 
 
@@ -45,4 +46,14 @@ enum Role {
   admin
   sales_person
   worker
+}
+
+
+model Payment {
+  id          Int       @id @default(autoincrement())
+  amount      Float
+  paymentDate DateTime  @default(now())
+  method      String    // e.g., "cash", "card", "upi", etc.
+  order         Order     @relation("OrderPayments", fields: [orderId], references: [id])
+  orderId     Int
 }
