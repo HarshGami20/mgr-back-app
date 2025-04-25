@@ -110,7 +110,9 @@ export const orderUpload = uploadMiddleware;
 // };
 
 
-export const createOrder = async (req: Request, res: Response): Promise <Response | any>  => {
+
+
+export const createOrder = async (req: Request, res: Response): Promise<Response | any>  => {
   try {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const productImageFiles = files['productImages'] || [];
@@ -202,6 +204,8 @@ export const createOrder = async (req: Request, res: Response): Promise <Respons
     });
   }
 };
+
+
 
 export const getOrders = async (req: Request, res: Response): Promise<Response | any> => {
   try {
