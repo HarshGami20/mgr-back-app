@@ -21,6 +21,7 @@ model Order {
   id                 Int      @id @default(autoincrement())
   customerName       String
   phoneNumber        String
+  gst                String?   // ✅ Optional GST field
   totalAmount        Float
   modeOfPayment      String
   advanceAmount      Float
@@ -28,7 +29,6 @@ model Order {
   productImages      Json     // Changed from String[] to Json
   orderStatus        String
   paymentStatus      String    // recived ,due ,partial
-// commentsFromStaff  String
   commentsFromStaff Json
   photosWithComments Json
   dateOfDelivery     DateTime
