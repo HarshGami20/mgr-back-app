@@ -538,6 +538,9 @@ export const deleteOrder = async (req: Request, res: Response): Promise<void> =>
         }
       });
     }
+    await prisma.payment.deleteMany({
+      where: { orderId: parsedId },
+    });
 
     await prisma.order.delete({ where: { id: parsedId } });
 
@@ -603,7 +606,9 @@ export const deleteAllOrders = async (req: Request, res: Response): Promise<void
           }
         });
       }
-
+      await prisma.payment.deleteMany({
+        where: { orderId: order.id },
+      });
       await prisma.order.delete({ where: { id: order.id } });
     }
 
