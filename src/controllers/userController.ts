@@ -9,11 +9,11 @@ import { prisma } from '../prisma';
 // Get all users (SUPER_admin only)
 export const getAllUsers = async (req: Request, res: Response): Promise<Response | any> => {
   
-  const currentUser = req.user  as User;
+  // const currentUser = req.user  as User;
 
-  if (currentUser.role !== 'super_admin') {
-    return res.status(403).json({ message: 'Only SUPER_admin can view all users' });
-  }
+  // if (currentUser.role !== 'super_admin') {
+  //   return res.status(403).json({ message: 'Only SUPER_admin can view all users' });
+  // }
 
   try {
     const users = await prisma.user.findMany({
