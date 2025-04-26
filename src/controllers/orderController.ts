@@ -177,6 +177,7 @@ export const createOrder = async (req: Request, res: Response): Promise<Response
       data: {
         customerName: req.body.customerName,
         phoneNumber: req.body.phoneNumber,
+        gst:req.body.gst,
         totalAmount,
         modeOfPayment: req.body.modeOfPayment,
         advanceAmount,
@@ -230,7 +231,8 @@ export const getOrder = async (req: Request, res: Response): Promise<Response | 
           name: true, 
           role: true, 
         }
-      }, payments : true}, // Optionally include related data, like createdBy
+        
+      }, payments : true,}, // Optionally include related data, like createdBy
     });
 
     if (!order) {
@@ -318,6 +320,7 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
     const updateData: any = {
       customerName: req.body.customerName,
       phoneNumber: req.body.phoneNumber,
+      gst:req.body.gst,
       totalAmount: parseFloat(req.body.totalAmount),
       modeOfPayment: req.body.modeOfPayment,
       advanceAmount: parseFloat(req.body.advanceAmount || '0'),
