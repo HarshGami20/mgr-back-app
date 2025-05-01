@@ -268,16 +268,24 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
     }
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
     const productImageFiles = files?.['productImages'] || [];
     const photosWithCommentsFiles = files?.['photosWithCommentsFiles'] || [];
-
-    // ✅ Merge existing + new productImages
-    const existingProductImages = JSON.parse(req.body.existingProductImages || "[]");
-    const newProductImages = productImageFiles.map((file) => ({
-      path: `/uploads/${file.filename}`,
-      originalName: file.originalname,
-    }));
-    const productImages = [...existingProductImages, ...newProductImages];
+    
+    let productImages = [];
+    if (productImageFiles.length > 0) {
+      // New images uploaded → merge with existing
+      const existingProductImages = JSON.parse(req.body.existingProductImages || "[]");
+      const newProductImages = productImageFiles.map((file) => ({
+        path: `/uploads/${file.filename}`,
+        originalName: file.originalname,
+      }));
+      productImages = [...existingProductImages, ...newProductImages];
+    } else {
+      // No new images → retain existing ones only
+      productImages = JSON.parse(req.body.existingProductImages || "[]");
+    }
+    
 
     // ✅ Merge photosWithComments (new files + existing)
     const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData || "[]");
