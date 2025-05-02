@@ -193,3 +193,46 @@ export const updateUserInfo = async (req: Request, res: Response): Promise<Respo
     return res.status(500).json({ message: "Something went wrong." });
   }
 };
+
+
+
+export const deleteUser = async (req: Request, res: Response): Promise<Response | any> => {
+  const { id } = req.params; // user to delete
+  const { password } = req.body;
+
+  const requester: User = req.user as User; // authenticated user
+
+  if (!password) {
+    return res.status(400).json({ message: "Password is required to delete account." });
+  }
+
+  try {
+    const requesterRecord = await prisma.user.findUnique({ where: { id: requester.id } });
+
+    if (!requesterRecord) {
+      return res.status(401).json({ message: "Invalid requester." });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, requesterRecord.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Invalid password." });
+    }
+
+    // Only allow deletion if requester is super_admin or deleting self
+    if (requester.id !== id && requester.role !== "super_admin") {
+      return res.status(403).json({ message: "You don't have permission to delete this user." });
+    }
+
+    const userToDelete = await prisma.user.findUnique({ where: { id } });
+    if (!userToDelete) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return res.status(200).json({ message: "User deleted successfully." });
+  } catch (error) {
+    console.error("Delete User Error:", error);
+    return res.status(500).json({ message: "Something went wrong." });
+  }
+};

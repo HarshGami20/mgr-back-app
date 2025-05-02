@@ -4,7 +4,7 @@ import express, { Request, Response } from "express";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { addCommentToOrder, createOrder, deleteAllOrders, deleteOrder, getOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
 import { getReports } from "../controllers/reportController";
-import { login, register, updateUserInfo } from "../controllers/authController";
+import { deleteUser, login, register, updateUserInfo } from "../controllers/authController";
 import { getAllUsers, updateUserRole } from "../controllers/userController";
 import { requireSuperAdmin } from "../middleware/requireSuperAdmin";
 import { handleError } from "../utils/errorHandler";
@@ -29,6 +29,7 @@ router.get('/example', async (req: Request, res: Response): Promise<void> => {
 router.post("/login", login);
 router.post("/register", authMiddleware, requireSuperAdmin, register);
 router.put("/update-user-info", authMiddleware, requireSuperAdmin, updateUserInfo);
+router.delete("/users/:id", authMiddleware, deleteUser);
 
 // Apply authentication middleware to protected routes
 router.use(authMiddleware);
