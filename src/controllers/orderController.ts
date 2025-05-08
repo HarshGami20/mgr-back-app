@@ -208,15 +208,76 @@ export const createOrder = async (req: Request, res: Response): Promise<Response
 
 
 
+// export const getOrders = async (req: Request, res: Response): Promise<Response | any> => {
+//   try {
+//     const orders = await prisma.order.findMany({
+//       include: { createdBy: true }
+//     });
+//      res.json(orders);
+//   } catch (error) {
+//     console.error(error);
+//      handleError(res, error);
+//   }
+// };
+
+
+// GET /auth/orders?offset=0&limit=20&searchTerm=chair&status=delivered&paymentStatus=paid&category=table&sortOrder=desc
+
 export const getOrders = async (req: Request, res: Response): Promise<Response | any> => {
   try {
+    const {
+      offset = "0",
+      limit = "20",
+      searchTerm = "",
+      status,
+      paymentStatus,
+      category,
+      sortOrder = "desc",
+    } = req.query as Record<string, string>;
+
+    // const filters: any = {
+    //   ...(status && status !== "all" && { status }),
+    //   ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
+    //   ...(category && category !== "all" && { category }),
+    //   ...(searchTerm && {
+    //     OR: [
+    //       { customerName: { contains: searchTerm, mode: "insensitive" } },
+    //       { orderId: { contains: searchTerm, mode: "insensitive" } },
+    //     ],
+    //   }),
+    // };
+
+    const filters: any = {
+      ...(status && status !== "all" && { orderStatus: status }),
+      ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
+      ...(category && category !== "all" && { orderCategory: category }),
+      ...(searchTerm && {
+        OR: [
+          { customerName: { contains: searchTerm} },
+          { phoneNumber: { contains: searchTerm} },
+          {
+            id: !isNaN(Number(searchTerm))
+              ? Number(searchTerm)
+              : undefined, // only match if numeric
+          },
+        ].filter(Boolean), // remove undefined entries
+      }),
+    };
+
     const orders = await prisma.order.findMany({
-      include: { createdBy: true }
+      where: filters,
+      skip: parseInt(offset),
+      take: parseInt(limit),
+      orderBy: {
+        createdAt: sortOrder === "asc" ? "asc" : "desc",
+      },
+      include: { createdBy: true },
     });
-     res.json(orders);
+
+    res.json({ orders });
   } catch (error) {
     console.error(error);
-     handleError(res, error);
+    return res.status(500).json({ error: "Failed to fetch orders" });
   }
 };
 
