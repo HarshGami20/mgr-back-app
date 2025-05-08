@@ -221,13 +221,12 @@ export const createOrder = async (req: Request, res: Response): Promise<Response
 // };
 
 
-// GET /auth/orders?offset=0&limit=20&searchTerm=chair&status=delivered&paymentStatus=paid&category=table&sortOrder=desc
 
 export const getOrders = async (req: Request, res: Response): Promise<Response | any> => {
   try {
     const {
       offset = "0",
-      limit = "20",
+      limit = "",
       searchTerm = "",
       status,
       paymentStatus,
@@ -235,51 +234,41 @@ export const getOrders = async (req: Request, res: Response): Promise<Response |
       sortOrder = "desc",
     } = req.query as Record<string, string>;
 
-    // const filters: any = {
-    //   ...(status && status !== "all" && { status }),
-    //   ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
-    //   ...(category && category !== "all" && { category }),
-    //   ...(searchTerm && {
-    //     OR: [
-    //       { customerName: { contains: searchTerm, mode: "insensitive" } },
-    //       { orderId: { contains: searchTerm, mode: "insensitive" } },
-    //     ],
-    //   }),
-    // };
-
     const filters: any = {
       ...(status && status !== "all" && { orderStatus: status }),
       ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
       ...(category && category !== "all" && { orderCategory: category }),
       ...(searchTerm && {
         OR: [
-          { customerName: { contains: searchTerm} },
-          { phoneNumber: { contains: searchTerm} },
-          {
-            id: !isNaN(Number(searchTerm))
-              ? Number(searchTerm)
-              : undefined, // only match if numeric
-          },
-        ].filter(Boolean), // remove undefined entries
+          { customerName: { contains: searchTerm } },
+          { phoneNumber: { contains: searchTerm } },
+          !isNaN(Number(searchTerm)) && { id: Number(searchTerm) },
+        ].filter(Boolean),
       }),
     };
 
-    const orders = await prisma.order.findMany({
+    const queryOptions: any = {
       where: filters,
       skip: parseInt(offset),
-      take: parseInt(limit),
       orderBy: {
         createdAt: sortOrder === "asc" ? "asc" : "desc",
       },
       include: { createdBy: true },
-    });
+    };
 
-    res.json({ orders });
+    if (limit) {
+      queryOptions.take = parseInt(limit);
+    }
+
+    const orders = await prisma.order.findMany(queryOptions);
+
+    return res.json({ orders });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Failed to fetch orders" });
   }
 };
+
 
 export const getOrder = async (req: Request, res: Response): Promise<Response | any> => {
   const { id } = req.params; // Extract order ID from request parameters
