@@ -1,3 +1,4 @@
+
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import multer, { FileFilterCallback } from 'multer';
@@ -284,10 +285,10 @@ export const getMyOrders = async (req: Request, res: Response): Promise<Response
     } = req.query as Record<string, string>;
 
     const filters: any = {
-      OR: [
-        { createdById: user.id },
-        { assignees: { path: '$', string_contains: user.id } }
-      ],
+      // OR: [
+      //   { createdById: user.id },
+      //   { assignees: { has: user.id } }
+      // ],
       ...(status && status !== "all" && { orderStatus: status }),
       ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
       ...(category && category !== "all" && { orderCategory: category }),
@@ -306,7 +307,17 @@ export const getMyOrders = async (req: Request, res: Response): Promise<Response
       orderBy: {
         createdAt: sortOrder === "asc" ? "asc" : "desc",
       },
-      include: { createdBy: true },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            role: true
+          }
+        }
+      }
     };
 
     if (limit) {
@@ -315,7 +326,13 @@ export const getMyOrders = async (req: Request, res: Response): Promise<Response
 
     const orders = await prisma.order.findMany(queryOptions);
 
-    return res.json({ orders });
+    // Filter orders to only include those created by or assigned to the user
+    const filteredOrders = orders.filter(order => {
+      return order.createdById === user.id || 
+             (order.assignees && Array.isArray(order.assignees) && order.assignees.includes(user.id));
+    });
+
+    return res.json({ orders: filteredOrders });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Failed to fetch orders" });
