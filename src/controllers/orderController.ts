@@ -1,4 +1,3 @@
-
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import multer, { FileFilterCallback } from 'multer';
@@ -235,6 +234,60 @@ export const getOrders = async (req: Request, res: Response): Promise<Response |
     } = req.query as Record<string, string>;
 
     const filters: any = {
+      ...(status && status !== "all" && { orderStatus: status }),
+      ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
+      ...(category && category !== "all" && { orderCategory: category }),
+      ...(searchTerm && {
+        OR: [
+          { customerName: { contains: searchTerm } },
+          { phoneNumber: { contains: searchTerm } },
+          !isNaN(Number(searchTerm)) && { id: Number(searchTerm) },
+        ].filter(Boolean),
+      }),
+    };
+
+    const queryOptions: any = {
+      where: filters,
+      skip: parseInt(offset),
+      orderBy: {
+        createdAt: sortOrder === "asc" ? "asc" : "desc",
+      },
+      include: { createdBy: true },
+    };
+
+    if (limit) {
+      queryOptions.take = parseInt(limit);
+    }
+
+    const orders = await prisma.order.findMany(queryOptions);
+
+    return res.json({ orders });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Failed to fetch orders" });
+  }
+};
+
+
+
+export const getMyOrders = async (req: Request, res: Response): Promise<Response | any> => {
+  try {
+    const user = getUserFromToken(req) as { id: string };
+    const {
+      offset = "0",
+      limit = "",
+      searchTerm = "",
+      status,
+      paymentStatus,
+      category,
+      sortOrder = "desc",
+    } = req.query as Record<string, string>;
+
+    const filters: any = {
+      OR: [
+        { createdById: user.id },
+        { assignees: { path: '$', string_contains: user.id } }
+      ],
       ...(status && status !== "all" && { orderStatus: status }),
       ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
       ...(category && category !== "all" && { orderCategory: category }),
@@ -646,7 +699,19 @@ export const deleteAllOrders = async (req: Request, res: Response): Promise<void
   }
 
   try {
-    const orders = await prisma.order.findMany();
+    const orders = await prisma.order.findMany({
+      where: {
+        createdById: "cm9quy5ia0000ul4sx2wysrzh"
+      },
+      skip: 0,
+      orderBy: {
+        createdAt: "desc"
+      },
+      include: {
+        createdBy: true
+      },
+      take: 20
+    });
 
     for (const order of orders) {
       if (order.productImages && Array.isArray(order.productImages)) {
