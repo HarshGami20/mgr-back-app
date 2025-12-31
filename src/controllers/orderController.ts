@@ -762,3 +762,129 @@ export const deleteAllOrders = async (req: Request, res: Response): Promise<void
   }
 };
 
+export const bulkDeleteOrders = async (req: Request, res: Response): Promise<void> => {
+  const password = typeof req.body.password === "string" ? req.body.password : undefined;
+  const { filterType, year, month, startDate, endDate } = req.body;
+  const currentUser = req.user as User;
+
+  if (!password) {
+    res.status(400).json({ message: "Password is required" });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: currentUser.email } });
+
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  if (user.role !== "super_admin") {
+    res.status(403).json({ message: "Forbidden: Only super admins can perform this action" });
+    return;
+  }
+
+  if (!user.password) {
+    res.status(401).json({ message: "Unauthorized: Missing user password" });
+    return;
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+
+  if (!isPasswordValid) {
+    res.status(401).json({ message: "Unauthorized: Invalid password" });
+    return;
+  }
+
+  try {
+    // Build date filter based on filterType
+    let dateFilter: any = {};
+
+    if (filterType === "year" && year) {
+      const startOfYear = new Date(parseInt(year), 0, 1);
+      const endOfYear = new Date(parseInt(year), 11, 31, 23, 59, 59, 999);
+      dateFilter = {
+        createdAt: {
+          gte: startOfYear,
+          lte: endOfYear,
+        },
+      };
+    } else if (filterType === "month" && year && month) {
+      const monthNum = parseInt(month);
+      const startOfMonthDate = new Date(parseInt(year), monthNum - 1, 1);
+      const endOfMonthDate = new Date(parseInt(year), monthNum, 0, 23, 59, 59, 999);
+      dateFilter = {
+        createdAt: {
+          gte: startOfMonthDate,
+          lte: endOfMonthDate,
+        },
+      };
+    } else if (filterType === "custom" && startDate && endDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      dateFilter = {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      };
+    } else {
+      res.status(400).json({ message: "Invalid filter parameters" });
+      return;
+    }
+
+    // Find orders matching the filter
+    const orders = await prisma.order.findMany({
+      where: dateFilter,
+      include: {
+        createdBy: true,
+      },
+    });
+
+    let deletedCount = 0;
+
+    // Delete each order and its associated files
+    for (const order of orders) {
+      // Delete product images
+      if (order.productImages && Array.isArray(order.productImages)) {
+        deleteFiles(order.productImages as { path: string }[]);
+      }
+
+      // Delete photos with comments
+      if (order.photosWithComments && Array.isArray(order.photosWithComments)) {
+        const photosWithComments = order.photosWithComments as (PhotoWithComment | any)[];
+        photosWithComments.forEach(item => {
+          if (typeof item.photo === "string") {
+            const photoPath = resolvePath(item.photo);
+            if (fs.existsSync(photoPath)) {
+              fs.unlinkSync(photoPath);
+              console.log(`Deleted photo: ${photoPath}`);
+            } else {
+              console.warn(`Photo does not exist: ${photoPath}`);
+            }
+          }
+        });
+      }
+
+      // Delete payments
+      await prisma.payment.deleteMany({
+        where: { orderId: order.id },
+      });
+
+      // Delete the order
+      await prisma.order.delete({ where: { id: order.id } });
+      deletedCount++;
+    }
+
+    res.json({ 
+      message: `Successfully deleted ${deletedCount} order(s)`,
+      deletedCount 
+    });
+  } catch (error) {
+    console.error('Error bulk deleting orders:', error);
+    res.status(500).json({ message: 'Error deleting orders', error: error instanceof Error ? error.message : String(error) });
+  }
+};
+
