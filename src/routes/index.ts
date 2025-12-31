@@ -2,7 +2,7 @@
 
 import express, { Request, Response } from "express";
 import { authMiddleware } from "../middleware/authMiddleware";
-import { addCommentToOrder, createOrder, deleteAllOrders, deleteOrder, getMyOrders, getOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
+import { addCommentToOrder, bulkDeleteOrders, createOrder, deleteAllOrders, deleteOrder, getMyOrders, getOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
 import { getReports } from "../controllers/reportController";
 import { deleteUser, login, register, updateUserInfo } from "../controllers/authController";
 import { getAllUsers, updateUserRole } from "../controllers/userController";
@@ -40,6 +40,7 @@ router.get("/orders", getOrders);
 router.get("/order/:id", getOrder);
 router.put("/orders/id=:id", orderUpload, updateOrder);
 router.delete('/orders/all', requireSuperAdmin, deleteAllOrders);
+router.delete('/orders/bulk', requireSuperAdmin, bulkDeleteOrders);
 router.delete('/orders/:id', deleteOrder);
 router.get('/users', getAllUsers);
 router.put('/users/:id', updateUserRole);
