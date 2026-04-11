@@ -6,6 +6,8 @@ import { generateToken } from "../utils/auth";
 import { Request, Response } from "express";
 import { prisma } from "../prisma";
 import { User } from "../types/custom";
+import { branchesVisibleForUser, userPublicSelect } from "../utils/userPublic";
+import { Role } from "@prisma/client";
 
 // export const register = async (req: Request, res: Response): Promise<Response | any> => {
 //   const { name, email, password, role } = req.body;
@@ -41,12 +43,23 @@ import { User } from "../types/custom";
 
 
 export const register = async (req: Request, res: Response): Promise<Response | any> => {
-  const { name, email, password, role, phone } = req.body; 
+  const { name, email, password, role, phone, branchIds } = req.body as {
+    name: string;
+    email: string;
+    password: string;
+    role: Role;
+    phone: string;
+    branchIds?: string[];
+  };
 
   const user: User = req.user as User;
 
   if (!user || user.role !== "super_admin") {
     return res.status(403).json({ message: "Only super_admin can Create Account." });
+  }
+
+  if (role === Role.super_admin) {
+    return res.status(400).json({ message: "Cannot create super_admin accounts via this endpoint" });
   }
 
   try {
@@ -57,25 +70,21 @@ export const register = async (req: Request, res: Response): Promise<Response | 
 
     const hashed = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.create({
+    const ids = Array.isArray(branchIds) ? branchIds.filter((id) => typeof id === "string") : [];
+
+    const created = await prisma.user.create({
       data: {
         name,
         email,
         phone,
         password: hashed,
         role,
+        ...(ids.length > 0 ? { branches: { connect: ids.map((id) => ({ id })) } } : {}),
       },
+      select: userPublicSelect,
     });
 
-    return res.status(201).json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-      },
-    });
+    return res.status(201).json({ user: created });
   } catch (error) {
     console.error("Registration Error:", error);
     return res.status(500).json({ message: "Something went wrong" });
@@ -93,6 +102,7 @@ export const login = async (req: Request, res: Response): Promise<Response | any
     } 
 
     const token = generateToken(user);
+    const branches = await branchesVisibleForUser(user.role, user.id);
 
     return res.status(200).json({
       user: {
@@ -101,6 +111,7 @@ export const login = async (req: Request, res: Response): Promise<Response | any
         email: user.email,
         phone: user.phone,
         role: user.role,
+        branches,
       },
       token,
     });
@@ -162,6 +173,12 @@ export const updateUserInfo = async (req: Request, res: Response): Promise<Respo
 
   if (!newPassword && !newPhone) {
     return res.status(400).json({ message: "At least one of newPassword or newPhone is required." });
+  }
+
+  if (newPassword) {
+    if (typeof newPassword !== "string" || newPassword.length < 6) {
+      return res.status(400).json({ message: "newPassword must be at least 6 characters." });
+    }
   }
 
   try {
@@ -228,11 +245,46 @@ export const deleteUser = async (req: Request, res: Response): Promise<Response 
       return res.status(404).json({ message: "User not found." });
     }
 
+    if (userToDelete.role === "super_admin") {
+      return res.status(403).json({ message: "Cannot delete a super admin account" });
+    }
+
     await prisma.user.delete({ where: { id } });
 
     return res.status(200).json({ message: "User deleted successfully." });
   } catch (error) {
     console.error("Delete User Error:", error);
     return res.status(500).json({ message: "Something went wrong." });
+  }
+};
+
+/** Current session user with branches (super_admin → all branches). */
+export const getSessionUser = async (req: Request, res: Response): Promise<Response | any> => {
+  const u = req.user as User;
+  if (!u?.id) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  try {
+    const row = await prisma.user.findUnique({
+      where: { id: u.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+      },
+    });
+    if (!row) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const branches = await branchesVisibleForUser(row.role, row.id);
+    return res.status(200).json({
+      ...row,
+      branches,
+    });
+  } catch (error) {
+    console.error("getSessionUser Error:", error);
+    return res.status(500).json({ message: "Something went wrong" });
   }
 };

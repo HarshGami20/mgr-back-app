@@ -30,6 +30,8 @@ export enum Role {
   admin = "admin",
   sales_person = "sales_person",
   worker = "worker",
+  supplier = "supplier",
+  manufacturer = "manufacturer",
 }
 
 export const requireRole = (roles: Role[]) => {
@@ -37,7 +39,8 @@ export const requireRole = (roles: Role[]) => {
     const user = req.user as User;  // Type-cast req.user to User
 
     if (!user || !roles.includes(user.role as Role)) {
-      return res.status(403).json({ message: "Access denied" });
+      res.status(403).json({ message: "Access denied" });
+      return;
     }
     next();
   };

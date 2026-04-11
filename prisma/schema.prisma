@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"  // Use MySQL instead of PostgreSQL
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -11,49 +11,122 @@ model User {
   id       String   @id @default(cuid())
   email    String   @unique
   name     String
-  phone    String   // <-- Added phone field here
+  phone    String
   password String
   role     Role
   orders   Order[]  @relation("CreatedOrders")
+  branches Branch[]
+}
+
+model Branch {
+  id    String @id @default(cuid())
+  name  String
+  code  String? @unique
+  users User[]
+}
+
+/// Parent catalog item (name, category). Stock and pricing live on {@link ProductVariant}.
+model Product {
+  id          String            @id @default(cuid())
+  name        String
+  description String            @db.Text
+  category    String
+  subcategory String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  variants    ProductVariant[]
+  activities  ProductActivity[]
+}
+
+/// One sellable SKU: size, material, color, model, price, images, stock.
+model ProductVariant {
+  id            String      @id @default(cuid())
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku           String      @unique
+  label         String?
+  size          String
+  material      String
+  color         String
+  model         String
+  unitPrice     Float?
+  stockQuantity Int         @default(0)
+  imageUris     Json
+  isDefault     Boolean     @default(false)
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  orderLines    OrderLine[]
+
+  @@index([productId])
+}
+
+model ProductActivity {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  action      String
+  message     String   @db.Text
+  payload     Json?
+  actorUserId String?
+  actorName   String?
+  createdAt   DateTime @default(now())
+
+  @@index([productId, createdAt])
 }
 
 model Order {
-  id                 Int      @id @default(autoincrement())
+  id                 Int         @id @default(autoincrement())
+  /** Public reference (UUID) — not sequential; use for display instead of `id`. */
+  orderCode          String      @unique @db.VarChar(36)
   customerName       String
   phoneNumber        String
-  gst                String?   // ✅ Optional GST field
+  gst                String?
   totalAmount        Float
   modeOfPayment      String
   advanceAmount      Float
   lendingAmount      Float
-  productImages      Json     // Changed from String[] to Json
+  productImages      Json
   orderStatus        String
-  paymentStatus      String    // recived ,due ,partial
-  commentsFromStaff Json
+  paymentStatus      String
+  commentsFromStaff  Json
   photosWithComments Json
   dateOfDelivery     DateTime
   orderCategory      String
-  createdAt          DateTime @default(now())
-  createdBy          User     @relation("CreatedOrders", fields: [createdById], references: [id])
+  createdAt          DateTime    @default(now())
+  createdBy          User        @relation("CreatedOrders", fields: [createdById], references: [id])
   createdById        String
-  assignees          Json     // <<< add this line for assignee array
-  payments       Payment[] @relation("OrderPayments")
+  assignees          Json
+  payments           Payment[]   @relation("OrderPayments")
+  orderLines         OrderLine[]
 }
 
+model OrderLine {
+  id               Int            @id @default(autoincrement())
+  orderId          Int
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariantId String
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  quantity         Int
+  unitPrice        Float
+  productName      String
+  sku              String
+}
 
 enum Role {
   super_admin
   admin
   sales_person
   worker
+  supplier
+  manufacturer
 }
 
-
 model Payment {
-  id          Int       @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   amount      Float
-  paymentDate DateTime  @default(now())
-  method      String    // e.g., "cash", "card", "upi", etc.
-  order         Order     @relation("OrderPayments", fields: [orderId], references: [id])
+  paymentDate DateTime @default(now())
+  method      String
+  order       Order    @relation("OrderPayments", fields: [orderId], references: [id])
   orderId     Int
 }

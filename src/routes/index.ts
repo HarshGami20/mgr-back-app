@@ -3,10 +3,51 @@
 import express, { Request, Response } from "express";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { addCommentToOrder, bulkDeleteOrders, createOrder, deleteAllOrders, deleteOrder, getMyOrders, getOrder, getOrders, orderUpload, updateOrder, updateStatus } from "../controllers/orderController";
+import {
+  adjustVariantInventory,
+  createProduct,
+  deleteProduct,
+  getProduct,
+  listProductActivity,
+  listProducts,
+  updateProduct,
+} from "../controllers/productController";
+import { requireRole, Role } from "../middleware/requireRole";
 import { getReports } from "../controllers/reportController";
-import { deleteUser, login, register, updateUserInfo } from "../controllers/authController";
-import { getAllUsers, updateUserRole } from "../controllers/userController";
+import {
+  getAdminOrdersDashboard,
+  getMyOrdersDashboard,
+} from "../controllers/dashboardController";
+import {
+  uploadImageMiddleware,
+  uploadProductImage,
+  uploadProductImageJson,
+} from "../controllers/uploadController";
+import {
+  deleteUser,
+  getSessionUser,
+  login,
+  register,
+  updateUserInfo,
+} from "../controllers/authController";
+import {
+  createBranch,
+  deleteBranch,
+  listBranches,
+  updateBranch,
+} from "../controllers/branchController";
+import {
+  getAllUsers,
+  getAssignableRoles,
+  getUserById,
+  getUsersForOrderAssignment,
+  updateUserRole,
+  updateUserBranches,
+  listDevUsers,
+  devImpersonateLogin,
+} from "../modules/users/userController";
 import { requireSuperAdmin } from "../middleware/requireSuperAdmin";
+import { devUserToolsOnly } from "../middleware/devUserToolsOnly";
 import { handleError } from "../utils/errorHandler";
 
 const router = express.Router();
@@ -27,6 +68,8 @@ router.get('/example', async (req: Request, res: Response): Promise<void> => {
 
 // Public routes — no auth required
 router.post("/login", login);
+router.get("/users/dev-list", devUserToolsOnly, listDevUsers);
+router.post("/users/dev-login", devUserToolsOnly, devImpersonateLogin);
 router.post("/register", authMiddleware, requireSuperAdmin, register);
 router.put("/update-user-info", authMiddleware, requireSuperAdmin, updateUserInfo);
 router.delete("/users/:id", authMiddleware, deleteUser);
@@ -34,16 +77,91 @@ router.delete("/users/:id", authMiddleware, deleteUser);
 // Apply authentication middleware to protected routes
 router.use(authMiddleware);
 
+router.get("/users/me", getSessionUser);
+router.get(
+  "/users/order-assignees",
+  requireRole([
+    Role.super_admin,
+    Role.admin,
+    Role.sales_person,
+    Role.worker,
+    Role.manufacturer,
+    Role.supplier,
+  ]),
+  getUsersForOrderAssignment
+);
+router.get("/users/roles", requireSuperAdmin, getAssignableRoles);
+router.get("/users", requireSuperAdmin, getAllUsers);
+router.get("/users/:id", requireSuperAdmin, getUserById);
+router.put("/users/:id/branches", requireSuperAdmin, updateUserBranches);
+router.put("/users/:id", requireSuperAdmin, updateUserRole);
+
+router.get("/branches", listBranches);
+router.post("/branches", requireSuperAdmin, createBranch);
+router.patch("/branches/:id", requireSuperAdmin, updateBranch);
+router.delete("/branches/:id", requireSuperAdmin, deleteBranch);
+
+router.post(
+  "/upload/image",
+  requireRole([Role.super_admin, Role.admin, Role.sales_person]),
+  uploadImageMiddleware,
+  uploadProductImage
+);
+router.post(
+  "/upload/image-json",
+  requireRole([Role.super_admin, Role.admin, Role.sales_person]),
+  uploadProductImageJson
+);
+
+router.get("/products", listProducts);
+router.get("/products/:id/activity", listProductActivity);
+router.post(
+  "/products/:productId/variants/:variantId/inventory-adjust",
+  requireRole([Role.super_admin, Role.admin, Role.sales_person, Role.worker]),
+  adjustVariantInventory
+);
+router.get("/products/:id", getProduct);
+router.post(
+  "/products",
+  requireRole([Role.super_admin, Role.admin, Role.sales_person]),
+  createProduct
+);
+router.patch(
+  "/products/:id",
+  requireRole([Role.super_admin, Role.admin, Role.sales_person]),
+  updateProduct
+);
+router.delete(
+  "/products/:id",
+  requireRole([Role.super_admin, Role.admin]),
+  deleteProduct
+);
+
 // Protected routes
 router.post('/orders', orderUpload, createOrder);
+router.get(
+  "/orders/dashboard/admin",
+  requireRole([Role.super_admin, Role.admin]),
+  getAdminOrdersDashboard
+);
+router.get(
+  "/orders/dashboard/mine",
+  requireRole([
+    Role.super_admin,
+    Role.admin,
+    Role.sales_person,
+    Role.worker,
+    Role.supplier,
+    Role.manufacturer,
+  ]),
+  getMyOrdersDashboard
+);
 router.get("/orders", getOrders);
 router.get("/order/:id", getOrder);
 router.put("/orders/id=:id", orderUpload, updateOrder);
 router.delete('/orders/all', requireSuperAdmin, deleteAllOrders);
 router.delete('/orders/bulk', requireSuperAdmin, bulkDeleteOrders);
 router.delete('/orders/:id', deleteOrder);
-router.get('/users', getAllUsers);
-router.put('/users/:id', updateUserRole);
 router.patch('/orders/:id/update-status', updateStatus);
 router.post("/orders/comments", addCommentToOrder);
 router.get("/reports", getReports);

@@ -1,5 +1,6 @@
 
 import { Request, Response } from "express";
+import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
@@ -8,11 +9,39 @@ import { PhotoWithComment, User   } from "../types/custom";
 import { handleError } from "../utils/errorHandler";
 import { prisma } from "../prisma";
 import { getUserFromToken } from "../utils/auth";
+import {
+  orderDetailInclude,
+  orderLinesInclude,
+  parseOrderLineInputs,
+  replaceOrderLines,
+} from "../utils/orderLineSync";
 
 
 
 interface MulterFiles {
   [fieldname: string]: Express.Multer.File[];
+}
+
+/** Client pre-uploaded images (`POST /api/upload/image-json`) — only allow our uploads dir. */
+function parsePreUploadedProductImagesJson(raw: unknown): { path: string; originalName: string }[] {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((x: { path?: unknown; originalName?: unknown }) => {
+        const p = typeof x?.path === "string" ? x.path.trim() : "";
+        if (!p.startsWith("/uploads/") || p.includes("..")) return null;
+        const originalName =
+          typeof x?.originalName === "string" && x.originalName.trim()
+            ? String(x.originalName).trim()
+            : p.split("/").pop() || "image.jpg";
+        return { path: p, originalName };
+      })
+      .filter((x): x is { path: string; originalName: string } => x != null);
+  } catch {
+    return [];
+  }
 }
 
 
@@ -119,22 +148,43 @@ export const createOrder = async (req: Request, res: Response): Promise<Response
     const photosWithCommentsFiles = files['photosWithCommentsFiles'] || [];
     const user = getUserFromToken(req) as { id: string };
 
-    // Get the uploaded product image paths
-    const productImagePaths = productImageFiles.map(file => ({
-      path: `/uploads/${file.filename}`,
-      originalName: file.originalname
-    }));
+    const preUploadedChallan = parsePreUploadedProductImagesJson(req.body.preUploadedProductImages);
+    const productImagePaths = [
+      ...preUploadedChallan,
+      ...productImageFiles.map((file) => ({
+        path: `/uploads/${file.filename}`,
+        originalName: file.originalname,
+      })),
+    ];
 
-    // Process photosWithComments data
+    // Process photosWithComments data (multipart files and/or `photoPath` from JSON pre-upload)
     let photosWithComments = [];
     if (req.body.photosWithCommentsData) {
       const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData);
 
-      photosWithComments = photosWithCommentsData.map((item: any) => {
-        const file = photosWithCommentsFiles[item.fileIndex];
+      photosWithComments = photosWithCommentsData.map((item: {
+        photoPath?: unknown;
+        fileIndex?: unknown;
+        comment?: unknown;
+      }) => {
+        const p =
+          typeof item.photoPath === "string" && item.photoPath.startsWith("/uploads/") && !item.photoPath.includes("..")
+            ? item.photoPath
+            : null;
+        if (p) {
+          return {
+            photo: p,
+            comment: typeof item.comment === "string" ? item.comment : "",
+          };
+        }
+        const idx = item.fileIndex;
+        const file =
+          typeof idx === "number" && Number.isFinite(idx)
+            ? photosWithCommentsFiles[idx]
+            : undefined;
         return {
           photo: file ? `/uploads/${file.filename}` : null,
-          comment: item.comment
+          comment: typeof item.comment === "string" ? item.comment : "",
         };
       });
     }
@@ -149,6 +199,8 @@ export const createOrder = async (req: Request, res: Response): Promise<Response
       }
     }
 
+    const lineInputs = parseOrderLineInputs(req.body as Record<string, unknown>);
+
     // Validate required fields
     if (!req.body.customerName || !req.body.phoneNumber || !req.body.totalAmount || !req.body.modeOfPayment) {
       return res.status(400).json({
@@ -156,6 +208,20 @@ export const createOrder = async (req: Request, res: Response): Promise<Response
       });
     }
 
+    const orderCategory =
+      typeof req.body.orderCategory === "string" && req.body.orderCategory.trim()
+        ? req.body.orderCategory.trim()
+        : "Home Furniture";
+    const orderStatus =
+      typeof req.body.orderStatus === "string" && req.body.orderStatus.trim()
+        ? req.body.orderStatus.trim()
+        : "Order Received";
+    const dateOfDeliveryRaw = req.body.dateOfDelivery
+      ? new Date(req.body.dateOfDelivery)
+      : new Date();
+    if (Number.isNaN(dateOfDeliveryRaw.getTime())) {
+      return res.status(400).json({ message: "Invalid dateOfDelivery" });
+    }
 
     // Parse amounts safely
     const totalAmount = parseFloat(req.body.totalAmount || '0');
@@ -172,29 +238,41 @@ export const createOrder = async (req: Request, res: Response): Promise<Response
       paymentStatus = 'Partial';
     }
 
-    // Create the order with all necessary fields
-    const order = await prisma.order.create({
-      data: {
-        customerName: req.body.customerName,
-        phoneNumber: req.body.phoneNumber,
-        gst:req.body.gst,
-        totalAmount,
-        modeOfPayment: req.body.modeOfPayment,
-        advanceAmount,
-        lendingAmount,
-        productImages: productImagePaths,
-        orderStatus: req.body.orderStatus,
-        paymentStatus,
-        commentsFromStaff: req.body.commentsFromStaff ? JSON.parse(req.body.commentsFromStaff) : [],
-        photosWithComments: photosWithComments,
-        dateOfDelivery: new Date(req.body.dateOfDelivery),
-        orderCategory: req.body.orderCategory,
-        createdById: user.id, 
-        assignees: assignees, 
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          orderCode: randomUUID(),
+          customerName: req.body.customerName,
+          phoneNumber: req.body.phoneNumber,
+          gst: req.body.gst,
+          totalAmount,
+          modeOfPayment: req.body.modeOfPayment,
+          advanceAmount,
+          lendingAmount,
+          productImages: productImagePaths,
+          orderStatus,
+          paymentStatus,
+          commentsFromStaff: req.body.commentsFromStaff
+            ? JSON.parse(req.body.commentsFromStaff)
+            : [],
+          photosWithComments: photosWithComments,
+          dateOfDelivery: dateOfDeliveryRaw,
+          orderCategory,
+          createdById: user.id,
+          assignees: assignees,
+        },
+      });
+      if (lineInputs.length > 0) {
+        await replaceOrderLines(tx, created.id, lineInputs);
       }
+      return tx.order.findUnique({
+        where: { id: created.id },
+        include: orderDetailInclude,
+      });
     });
+
     res.status(201).json({
-      message: 'Order created successfully',
+      message: "Order created successfully",
       order,
     });
   } catch (error) {
@@ -253,7 +331,7 @@ export const getOrders = async (req: Request, res: Response): Promise<Response |
       orderBy: {
         createdAt: sortOrder === "asc" ? "asc" : "desc",
       },
-      include: { createdBy: true },
+      include: { createdBy: true, ...orderLinesInclude },
     };
 
     if (limit) {
@@ -285,10 +363,8 @@ export const getMyOrders = async (req: Request, res: Response): Promise<Response
     } = req.query as Record<string, string>;
 
     const filters: any = {
-      // OR: [
-      //   { createdById: user.id },
-      //   { assignees: { has: user.id } }
-      // ],
+      /** My orders = created by this user only (not assignee-only rows). */
+      createdById: user.id,
       ...(status && status !== "all" && { orderStatus: status }),
       ...(paymentStatus && paymentStatus !== "all" && { paymentStatus }),
       ...(category && category !== "all" && { orderCategory: category }),
@@ -314,10 +390,11 @@ export const getMyOrders = async (req: Request, res: Response): Promise<Response
             email: true,
             name: true,
             phone: true,
-            role: true
-          }
-        }
-      }
+            role: true,
+          },
+        },
+        ...orderLinesInclude,
+      },
     };
 
     if (limit) {
@@ -326,13 +403,7 @@ export const getMyOrders = async (req: Request, res: Response): Promise<Response
 
     const orders = await prisma.order.findMany(queryOptions);
 
-    // Filter orders to only include those created by or assigned to the user
-    const filteredOrders = orders.filter(order => {
-      return order.createdById === user.id || 
-             (order.assignees && Array.isArray(order.assignees) && order.assignees.includes(user.id));
-    });
-
-    return res.json({ orders: filteredOrders });
+    return res.json({ orders });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Failed to fetch orders" });
@@ -345,14 +416,8 @@ export const getOrder = async (req: Request, res: Response): Promise<Response | 
 
   try {
     const order = await prisma.order.findUnique({
-      where: { id: parseInt(id, 10) }, // Use the order ID to fetch the specific order
-      include: {  createdBy: {
-        select: {
-          name: true, 
-          role: true, 
-        }
-        
-      }, payments : true,}, // Optionally include related data, like createdBy
+      where: { id: parseInt(id, 10) },
+      include: orderDetailInclude,
     });
 
     if (!order) {
@@ -391,39 +456,53 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
 
     const productImageFiles = files?.['productImages'] || [];
     const photosWithCommentsFiles = files?.['photosWithCommentsFiles'] || [];
-    
-    let productImages = [];
-    if (productImageFiles.length > 0) {
-      // New images uploaded → merge with existing
+    const preUploadedNewChallan = parsePreUploadedProductImagesJson(req.body.preUploadedNewProductImages);
+
+    let productImages: { path: string; originalName: string }[] = [];
+    if (productImageFiles.length > 0 || preUploadedNewChallan.length > 0) {
       const existingProductImages = JSON.parse(req.body.existingProductImages || "[]");
-      const newProductImages = productImageFiles.map((file) => ({
+      const newFromFiles = productImageFiles.map((file) => ({
         path: `/uploads/${file.filename}`,
         originalName: file.originalname,
       }));
-      productImages = [...existingProductImages, ...newProductImages];
+      productImages = [...existingProductImages, ...preUploadedNewChallan, ...newFromFiles];
     } else {
-      // No new images → retain existing ones only
       productImages = JSON.parse(req.body.existingProductImages || "[]");
     }
-    
 
     // ✅ Merge photosWithComments (new files + existing)
     const photosWithCommentsData = JSON.parse(req.body.photosWithCommentsData || "[]");
 
-    const photosWithComments = photosWithCommentsData.map((item: any) => {
-      if (item.fileIndex !== undefined) {
-        const file = photosWithCommentsFiles[item.fileIndex];
+    const photosWithComments = photosWithCommentsData.map(
+      (item: {
+        photoPath?: unknown;
+        fileIndex?: unknown;
+        existingPhotoPath?: unknown;
+        comment?: unknown;
+      }) => {
+        const p =
+          typeof item.photoPath === "string" && item.photoPath.startsWith("/uploads/") && !item.photoPath.includes("..")
+            ? item.photoPath
+            : null;
+        if (p) {
+          return {
+            photo: p,
+            comment: typeof item.comment === "string" ? item.comment : "",
+          };
+        }
+        if (item.fileIndex !== undefined) {
+          const file = photosWithCommentsFiles[item.fileIndex as number];
+          return {
+            photo: file ? `/uploads/${file.filename}` : null,
+            comment: typeof item.comment === "string" ? item.comment : "",
+          };
+        }
         return {
-          photo: file ? `/uploads/${file.filename}` : null,
-          comment: item.comment,
-        };
-      } else {
-        return {
-          photo: item.existingPhotoPath,
-          comment: item.comment,
+          photo: typeof item.existingPhotoPath === "string" ? item.existingPhotoPath : null,
+          comment: typeof item.comment === "string" ? item.comment : "",
         };
       }
-    });
+    );
 
     // ✅ Process assignees
     let assignees = [];
@@ -465,13 +544,26 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
       assignees: assignees, // 🔥 added here
     };
 
-    const updatedOrder = await prisma.order.update({
-      where: { id : parsedId },
-      data: updateData,
+    const lineInputs = parseOrderLineInputs(req.body as Record<string, unknown>);
+    const shouldReplaceLines =
+      req.body.orderLines !== undefined || req.body.lineItems !== undefined;
+
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: parsedId },
+        data: updateData,
+      });
+      if (shouldReplaceLines) {
+        await replaceOrderLines(tx, parsedId, lineInputs);
+      }
+      return tx.order.findUnique({
+        where: { id: parsedId },
+        include: orderDetailInclude,
+      });
     });
 
     return res.json({
-      message: 'Order updated successfully',
+      message: "Order updated successfully",
       order: updatedOrder,
     });
   } catch (error) {
@@ -483,7 +575,6 @@ export const updateOrder = async (req: Request, res: Response): Promise<Response
 
 export const addCommentToOrder = async (req: Request, res: Response): Promise<Response | any> => {
   const { orderId, comment,commentedBy  } = req.body;
-  const user = getUserFromToken(req) as { id: string };
 
   try {
     const order = await prisma.order.findUnique({
@@ -493,7 +584,6 @@ export const addCommentToOrder = async (req: Request, res: Response): Promise<Re
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
-console.log(user)
     // Ensure commentsFromStaff is an array, even if it's null or undefined
     const existingComments = Array.isArray(order.commentsFromStaff)
       ? order.commentsFromStaff: []; // Default to empty array if commentsFromStaff is not an array
@@ -522,55 +612,102 @@ console.log(user)
   }
 };
 
+function normalizePaymentLabel(status: unknown): string {
+  const s = String(status ?? "").trim().toLowerCase();
+  if (s === "received") return "Received";
+  if (s === "due") return "Due";
+  if (s === "partial") return "Partial";
+  return String(status ?? "");
+}
+
 
 export const updateStatus = async (req: Request,res:Response): Promise<Response | any> =>{
   const { id } = req.params;
-  const parsedId = parseInt(id, 10); // Parse it into an integer
-  const { orderStatus, paymentStatus ,lendingAmount, payments  } = req.body;
-
+  const parsedId = parseInt(id, 10);
+  const { orderStatus, paymentStatus, lendingAmount, payments } = req.body;
 
   try {
-    const updatedOrder = await prisma.order.update({
-      where: { id : parsedId  },
-      data: {
-        orderStatus,
-        paymentStatus,
-        lendingAmount
-      },
+    const existing = await prisma.order.findUnique({
+      where: { id: parsedId },
+      include: { payments: true },
     });
+    if (!existing) {
+      return res.status(404).json({ error: "Order not found" });
+    }
 
+    if (orderStatus != null && String(orderStatus).trim() !== "") {
+      await prisma.order.update({
+        where: { id: parsedId },
+        data: { orderStatus },
+      });
+    }
 
-    // Check if payment status is not 'received'
-    if (paymentStatus !== 'received') {
-      // Ensure payments is an array and has at least one payment
-      if (Array.isArray(payments) && payments.length > 0) {
-        for (const payment of payments) {
-          // Create multiple payment records for the order
-          await prisma.payment.create({
-            data: {
-              // orderId: updatedOrder.id,     // Link to the updated order
-              amount: parseFloat(payment.amount),  // Payment amount (ensure it's a valid number)
-              method: payment.method,              // Payment method (e.g., "cash", "card", "upi")
-              order: {
-                connect: {
-                  id: updatedOrder.id, // The ID of the order you're associating the payment with
-                },
-              },
-              paymentDate: new Date().toISOString(),
-            },
-          });
-        }
+    let addedPayments = false;
+    if (Array.isArray(payments)) {
+      for (const payment of payments) {
+        const amt = parseFloat(String(payment?.amount ?? ""));
+        if (!Number.isFinite(amt) || amt <= 0) continue;
+        await prisma.payment.create({
+          data: {
+            amount: amt,
+            method: typeof payment?.method === "string" && payment.method.trim()
+              ? payment.method.trim()
+              : "Cash",
+            orderId: parsedId,
+            paymentDate: new Date(),
+          },
+        });
+        addedPayments = true;
       }
     }
 
+    const after = await prisma.order.findUnique({
+      where: { id: parsedId },
+      include: { payments: true },
+    });
+    if (!after) {
+      return res.status(500).json({ error: "Order not found after update" });
+    }
 
-    
-    // Return the updated order along with payments
+    const sumInstallments = after.payments.reduce((s, p) => s + p.amount, 0);
+    const totalCollected = after.advanceAmount + sumInstallments;
+    const remaining = Math.max(0, after.totalAmount - totalCollected);
+    let autoPaymentStatus = normalizePaymentLabel(after.paymentStatus);
+    if (remaining < 0.01) {
+      autoPaymentStatus = "Received";
+    } else if (totalCollected > 0.01) {
+      autoPaymentStatus = "Partial";
+    } else {
+      autoPaymentStatus = "Due";
+    }
+
+    if (addedPayments) {
+      await prisma.order.update({
+        where: { id: parsedId },
+        data: {
+          lendingAmount: remaining,
+          paymentStatus: autoPaymentStatus,
+        },
+      });
+    } else {
+      await prisma.order.update({
+        where: { id: parsedId },
+        data: {
+          paymentStatus:
+            paymentStatus != null && String(paymentStatus).trim() !== ""
+              ? normalizePaymentLabel(paymentStatus)
+              : after.paymentStatus,
+          lendingAmount:
+            lendingAmount != null && String(lendingAmount).trim() !== ""
+              ? parseFloat(String(lendingAmount))
+              : after.lendingAmount,
+        },
+      });
+    }
+
     const orderWithPayments = await prisma.order.findUnique({
-      where: { id: updatedOrder.id },
-      include: {
-        payments: true, // Include payments in the response
-      },
+      where: { id: parsedId },
+      include: orderDetailInclude,
     });
 
     res.status(200).json(orderWithPayments);

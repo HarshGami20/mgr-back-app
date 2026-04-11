@@ -1,6 +1,12 @@
 // src/types/custom.d.ts
 
-export type UserRole = "super_admin" | "admin" | "sales_person" | "worker";
+export type UserRole =
+  | "super_admin"
+  | "admin"
+  | "sales_person"
+  | "worker"
+  | "supplier"
+  | "manufacturer";
 
 export interface User {
   id: string;
