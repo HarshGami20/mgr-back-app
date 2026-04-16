@@ -70,6 +70,9 @@ router.get('/example', async (req: Request, res: Response): Promise<void> => {
 router.post("/login", login);
 router.get("/users/dev-list", devUserToolsOnly, listDevUsers);
 router.post("/users/dev-login", devUserToolsOnly, devImpersonateLogin);
+/** Catalog reads — app can load products before login (dev picker / public list). */
+router.get("/products", listProducts);
+router.get("/products/:id", getProduct);
 router.post("/register", authMiddleware, requireSuperAdmin, register);
 router.put("/update-user-info", authMiddleware, requireSuperAdmin, updateUserInfo);
 router.delete("/users/:id", authMiddleware, deleteUser);
@@ -113,14 +116,12 @@ router.post(
   uploadProductImageJson
 );
 
-router.get("/products", listProducts);
 router.get("/products/:id/activity", listProductActivity);
 router.post(
   "/products/:productId/variants/:variantId/inventory-adjust",
   requireRole([Role.super_admin, Role.admin, Role.sales_person, Role.worker]),
   adjustVariantInventory
 );
-router.get("/products/:id", getProduct);
 router.post(
   "/products",
   requireRole([Role.super_admin, Role.admin, Role.sales_person]),

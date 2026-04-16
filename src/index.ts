@@ -59,6 +59,18 @@ app.use(
     maxAge: 86_400,
   })
 );
+
+/** Liveness — no auth; for load balancers, k8s, uptime monitors (not logged by apiHttpLogger). */
+app.get("/health", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).json({
+    status: "ok",
+    service: "mgr-casa-backend",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Large enough for base64 image uploads on `/api/upload/image-json` (~8MB file → ~11MB JSON).
 app.use(express.json({ limit: "12mb" }));
 app.use(apiHttpLogger);
