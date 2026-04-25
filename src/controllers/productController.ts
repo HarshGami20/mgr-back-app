@@ -408,6 +408,82 @@ export const listProductActivity = async (req: Request, res: Response): Promise<
   }
 };
 
+export const listInventoryLogs = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const pageSize = Math.min(500, Math.max(1, parseInt(String(req.query.pageSize || "100"), 10) || 100));
+    const skip = (page - 1) * pageSize;
+    const productId = typeof req.query.productId === "string" ? req.query.productId.trim() : "";
+    const variantId = typeof req.query.variantId === "string" ? req.query.variantId.trim() : "";
+
+    const where: Prisma.ProductActivityWhereInput = {
+      action: "stock_adjusted",
+      ...(productId ? { productId } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.productActivity.findMany({
+        where,
+        include: {
+          product: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.productActivity.count({ where }),
+    ]);
+
+    const mapped = items
+      .map((row) => {
+        const payload = (row.payload ?? {}) as Record<string, unknown>;
+        const rawVariantId = String(payload.variantId ?? "").trim();
+        if (variantId && rawVariantId !== variantId) return null;
+        const action = String(payload.action ?? "set").trim().toLowerCase();
+        const qty = Math.max(0, Number(payload.quantity ?? 0) || 0);
+        return {
+          id: row.id,
+          variantId: rawVariantId,
+          productId: row.productId,
+          productName:
+            typeof payload.productName === "string" && payload.productName.trim()
+              ? payload.productName.trim()
+              : row.product?.name ?? "",
+          sku:
+            typeof payload.sku === "string" && payload.sku.trim()
+              ? payload.sku.trim()
+              : undefined,
+          action: action === "reduce" ? "reduce" : "add",
+          quantity: qty,
+          at: row.createdAt.toISOString(),
+          userId: row.actorUserId ?? "system",
+          userName: row.actorName ?? "System",
+          previousStock:
+            Number.isFinite(Number(payload.previousStock)) ? Number(payload.previousStock) : undefined,
+          newStock:
+            Number.isFinite(Number(payload.newStock)) ? Number(payload.newStock) : undefined,
+          reason:
+            typeof payload.reason === "string" && payload.reason.trim()
+              ? payload.reason.trim()
+              : row.message,
+          orderId:
+            typeof payload.orderId === "string" && payload.orderId.trim()
+              ? payload.orderId.trim()
+              : undefined,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+
+    res.json({ items: mapped, total });
+  } catch (error) {
+    handleError(res, error);
+  }
+};
+
 export const adjustVariantInventory = async (req: Request, res: Response): Promise<void> => {
   try {
     const { productId, variantId } = req.params;
@@ -415,6 +491,7 @@ export const adjustVariantInventory = async (req: Request, res: Response): Promi
     const action = String(body.action || "").trim();
     const qty = Math.floor(Number(body.quantity ?? 0));
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    const orderId = typeof body.orderId === "string" ? body.orderId.trim() : "";
 
     if (!action || (action !== "add" && action !== "reduce" && action !== "set")) {
       res.status(400).json({ message: "action must be add, reduce, or set" });
@@ -462,12 +539,14 @@ export const adjustVariantInventory = async (req: Request, res: Response): Promi
       message: reason ? `${detail} ${reason}` : detail,
       payload: {
         variantId,
+        productName: existing.product.name,
         sku: existing.sku,
         action,
         quantity: qty,
         previousStock: prev,
         newStock: next,
         reason: reason || undefined,
+        orderId: orderId || undefined,
       },
       actorUserId: actor?.id,
       actorName: actor?.name,

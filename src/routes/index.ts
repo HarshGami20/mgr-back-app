@@ -8,6 +8,7 @@ import {
   createProduct,
   deleteProduct,
   getProduct,
+  listInventoryLogs,
   listProductActivity,
   listProducts,
   updateProduct,
@@ -117,6 +118,11 @@ router.post(
 );
 
 router.get("/products/:id/activity", listProductActivity);
+router.get(
+  "/inventory/logs",
+  requireRole([Role.super_admin, Role.admin, Role.sales_person, Role.worker]),
+  listInventoryLogs
+);
 router.post(
   "/products/:productId/variants/:variantId/inventory-adjust",
   requireRole([Role.super_admin, Role.admin, Role.sales_person, Role.worker]),
